@@ -1,0 +1,76 @@
+name: Deploy Node.js Backend to Shared Hosting
+
+on:
+  push:
+    branches:
+      - testing
+  workflow_dispatch:
+    branches:
+      - main
+
+jobs:
+  deploy_testing:
+    if: github.ref == 'refs/heads/testing'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 16
+
+      - name: Install project dependencies
+        run: npm install
+
+      - name: Build Node.js project
+        run: npm run build # Adjust if you have a custom build script; otherwise, remove this step if not applicable
+
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Deploy to Shared Hosting using FTP
+        env:
+          FTP_USERNAME: ${{ secrets.STAGE_FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.STAGE_FTP_PASSWORD }}
+          FTP_HOST: ${{ secrets.STAGE_FTP_HOST }}
+        run: |
+          lftp -c "set ssl:verify-certificate no; open -u $FTP_USERNAME,$FTP_PASSWORD $FTP_HOST; mirror -R -e -x .git/ ./"
+
+      - name: Clean up
+        run: echo "Clean up step"
+
+  deploy_main:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 16
+
+      - name: Install project dependencies
+        run: npm install
+
+      - name: Build Node.js project
+        run: npm run build # Adjust if you have a custom build script; otherwise, remove this step if not applicable
+
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Deploy to Shared Hosting using FTP
+        env:
+          FTP_USERNAME: ${{ secrets.BACKEND_FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.BACKEND_FTP_PASSWORD }}
+          FTP_HOST: ${{ secrets.BACKEND_FTP_HOST }}
+        run: |
+          lftp -c "set ssl:verify-certificate no; open -u $FTP_USERNAME,$FTP_PASSWORD $FTP_HOST; mirror -R -e -x .git/ ./"
+
+      - name: Clean up
+        run: echo "Clean up step"
