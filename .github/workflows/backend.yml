@@ -4,7 +4,7 @@ name: CI/CD Workflow
 on:
   push:
     branches:
-      - test
+      - testing
   workflow_dispatch:
     branches:
       - main
@@ -56,8 +56,8 @@ jobs:
           username: ${{ secrets.BACKEND_FTP_USERNAME }}
           password: ${{ secrets.BACKEND_FTP_PASSWORD }}
 
-  deploy_test:
-    if: github.ref == 'refs/heads/test'
+  deploy_testing:
+    if: github.ref == 'refs/heads/testing'
     runs-on: ubuntu-latest
 
     steps:
