@@ -1,76 +1,71 @@
-name: Deploy Node.js Backend to Shared Hosting
+name: CI/CD Workflow
 
 on:
   push:
     branches:
-      - testing
+      - test
   workflow_dispatch:
     branches:
       - main
 
 jobs:
-  deploy_testing:
-    if: github.ref == 'refs/heads/testing'
+  build:
     runs-on: ubuntu-latest
+    container:
+      image: node:16.14.0
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-      - name: Install Node.js
-        uses: actions/setup-node@v2
+      - name: Cache node modules
+        uses: actions/cache@v2
         with:
-          node-version: 16
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
-      - name: Install project dependencies
-        run: npm install
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Build Node.js project
-        run: npm run build # Adjust if you have a custom build script; otherwise, remove this step if not applicable
+  security_scan:
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: node:16.14.0
 
-      - name: Install lftp
-        run: sudo apt-get update && sudo apt-get install -y lftp
+    steps:
+      - uses: actions/checkout@v2
 
-      - name: Deploy to Shared Hosting using FTP
-        env:
-          FTP_USERNAME: ${{ secrets.STAGE_FTP_USERNAME }}
-          FTP_PASSWORD: ${{ secrets.STAGE_FTP_PASSWORD }}
-          FTP_HOST: ${{ secrets.STAGE_FTP_HOST }}
-        run: |
-          lftp -c "set ssl:verify-certificate no; open -u $FTP_USERNAME,$FTP_PASSWORD $FTP_HOST; mirror -R -e -x .git/ ./"
-
-      - name: Clean up
-        run: echo "Clean up step"
+      - name: Security Scan
+        uses: zricethezav/gitleaks-action@v1.5.0
 
   deploy_main:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: 🚚 Get latest code
         uses: actions/checkout@v2
 
-      - name: Install Node.js
-        uses: actions/setup-node@v2
+      - name: 📂 Sync files to production
+        uses: SamKirkland/FTP-Deploy-Action@v4.2.0
         with:
-          node-version: 16
+          server: ftp.theshippinghack.com
+          username: ${{ secrets.BACKEND_FTP_USERNAME }}
+          password: ${{ secrets.BACKEND_FTP_PASSWORD }}
 
-      - name: Install project dependencies
-        run: npm install
+  deploy_test:
+    if: github.ref == 'refs/heads/test'
+    runs-on: ubuntu-latest
 
-      - name: Build Node.js project
-        run: npm run build # Adjust if you have a custom build script; otherwise, remove this step if not applicable
+    steps:
+      - name: 🚚 Get latest code
+        uses: actions/checkout@v2
 
-      - name: Install lftp
-        run: sudo apt-get update && sudo apt-get install -y lftp
-
-      - name: Deploy to Shared Hosting using FTP
-        env:
-          FTP_USERNAME: ${{ secrets.BACKEND_FTP_USERNAME }}
-          FTP_PASSWORD: ${{ secrets.BACKEND_FTP_PASSWORD }}
-          FTP_HOST: ${{ secrets.BACKEND_FTP_HOST }}
-        run: |
-          lftp -c "set ssl:verify-certificate no; open -u $FTP_USERNAME,$FTP_PASSWORD $FTP_HOST; mirror -R -e -x .git/ ./"
-
-      - name: Clean up
-        run: echo "Clean up step"
+      - name: 📂 Sync files to development
+        uses: SamKirkland/FTP-Deploy-Action@v4.2.0
+        with:
+          server: ftp.theshippinghack.com
+          username: ${{ secrets.STAGE_FTP_USERNAME }}
+          password: ${{ secrets.STAGE_FTP_PASSWORD }}
