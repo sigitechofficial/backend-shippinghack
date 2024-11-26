@@ -74,7 +74,7 @@ module.exports = (sequelize, DataTypes) =>{
             defaultValue: true
         },
         arrived:{
-            type:DataTypes.ENUM('neverArrived','pending','arrived'),
+            type:DataTypes.ENUM('neverArrived','pending','arrived','cancelled'),
             defaultValue:'pending',
         },
         actualWeight: {

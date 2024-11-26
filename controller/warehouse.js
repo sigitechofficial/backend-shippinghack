@@ -914,14 +914,22 @@ async function getAllbookings(req, res) {
         title: obj.deliveryType && obj.deliveryType.title,
       },
       dropoffAddress: obj.dropoffAddress
-        ? {
+      ? {
           id: obj.dropoffAddress.id,
-          streetAddress: obj.dropoffAddress.streetAddress,
-          district: obj.dropoffAddress.district,
-          city: obj.dropoffAddress.city,
-          province: obj.dropoffAddress.province,
+          streetAddress: obj.dropoffAddress.streetAddress 
+            ? obj.dropoffAddress.streetAddress.trim().replace(/\s+/g, " ") 
+            : "",
+          district: obj.dropoffAddress.district 
+            ? obj.dropoffAddress.district.trim().replace(/\s+/g, " ") 
+            : "",
+          city: obj.dropoffAddress.city 
+            ? obj.dropoffAddress.city.trim().replace(/\s+/g, " ") 
+            : "",
+          province: obj.dropoffAddress.province 
+            ? obj.dropoffAddress.province.trim().replace(/\s+/g, " ") 
+            : "",
         }
-        : {},
+      : {},   
       shipmentType: obj.shipmentType
         ? {
           id: obj.shipmentType.id,
@@ -1196,12 +1204,12 @@ async function bookingDetailsById(req, res) {
         date: bookingData.dropoffDate || "",
         startTime: bookingData.dropoffStartTime || "",
         endTime: bookingData.dropoffEndTime || "",
-        address: `${bookingData.dropoffAddress.streetAddress} ${bookingData.dropoffAddress.district} ${bookingData.dropoffAddress.city} ${bookingData.dropoffAddress.province} ${bookingData.dropoffAddress.country} ${bookingData.dropoffAddress.postalCode} `,
+        address: `${bookingData.dropoffAddress.streetAddress||""} ${bookingData.dropoffAddress.district || ""} ${bookingData.dropoffAddress.city ||""} ${bookingData.dropoffAddress.province||""} ${bookingData.dropoffAddress.country||""} ${bookingData.dropoffAddress.postalCode||""} `.trim().replace(/\s+/g, " "),
         lat: bookingData.dropoffAddress.lat,
         lng: bookingData.dropoffAddress.lng,
       } : bookingData.deliveryTypeId === 2 ? {
 
-        address: `${bookingData.deliveryWarehouse.addressDB.streetAddress} ${bookingData.deliveryWarehouse.addressDB.district} ${bookingData.deliveryWarehouse.addressDB.city} ${bookingData.deliveryWarehouse.addressDB.province} ${bookingData.deliveryWarehouse.addressDB.country} ${bookingData.deliveryWarehouse.addressDB.postalCode} `,
+        address: `${bookingData.deliveryWarehouse.addressDB.streetAddress} ${bookingData.deliveryWarehouse.addressDB.district||""} ${bookingData.deliveryWarehouse.addressDB.city} ${bookingData.deliveryWarehouse.addressDB.province} ${bookingData.deliveryWarehouse.addressDB.country} ${bookingData.deliveryWarehouse.addressDB.postalCode} `.trim().replace(/\s+/g, " "),
         lat: bookingData.deliveryWarehouse.addressDB.lat,
         lng: bookingData.deliveryWarehouse.addressDB.lng,
       } : {},

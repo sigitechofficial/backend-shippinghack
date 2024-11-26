@@ -380,12 +380,121 @@ const newPayload = {
   }
 };
 
+const demo_Payload={
+	"labelResponseOptions": "URL_ONLY",
+	"requestedShipment": {
+		"shipper": {
+			"contact": {
+				"personName": "JOHN DOW",
+				"phoneNumber": 1212121221,
+				"companyName": "The Shipping Hack"
+			},
+			"address": {
+				"streetLines": [
+					"500 Ave Josa de Diego"
+				],
+				"city": "Bayamon",
+				"stateOrProvinceCode": "PR",
+				"postalCode": "00961",
+				"countryCode": "US"
+			}
+		},
+		"recipients": [
+			{
+				"contact": {
+					"personName": "Juan Del Pueblo",
+					"phoneNumber": 1010101010,
+					"companyName": ""
+				},
+				"address": {
+					"streetLines": [
+						"151 Calle de San Francisco"
+					],
+					"city": "SAN JUAN",
+					"stateOrProvinceCode": "PR",
+					"postalCode": "00901",
+					"countryCode": "US"
+				}
+			}
+		],
+		"shipDatestamp": "2024-11-20",
+		"serviceType": "INTERNATIONAL_PRIORITY",
+		"packagingType": "YOUR_PACKAGING",
+		"pickupType": "USE_SCHEDULED_PICKUP",
+		"totalWeight": 18,
+		"blockInsightVisibility": false,
+		"shippingChargesPayment": {
+			"paymentType": "THIRD_PARTY",
+			"payor": {
+         	"responsibleParty": {
+            	"accountNumber": {
+              		"value": "510087640"
+					}			
+				}
+			}
+		},
+		"labelSpecification": {
+			"imageType": "PDF",
+			"labelStockType": "PAPER_85X11_TOP_HALF_LABEL"
+		},
+		
+		"customsClearanceDetail": {
+			"dutiesPayment": {
+				"paymentType": "THIRD_PARTY",
+				"payor": {
+         		"responsibleParty": {
+						"accountNumber": {
+              			"value": "510087640"
+						}			
+					}
+				}				
+			},
+			"isDocumentOnly": false,
+			"commodities": [
+				{
+					"description": "Commodity Description for International shipment",
+					"countryOfManufacture": "US",
+					"quantity": 1,
+					"quantityUnits": "PCS",
+					"unitPrice": {
+						"amount": 1.00,
+						"currency": "USD"
+					},
+					"weight": {
+						"units": "LB",
+						"value": 1
+					}
+				}
+				
+			]
+		},
+		"requestedPackageLineItems": [
+			{
+				 "customerReferences": [
+             {
+             "customerReferenceType": "CUSTOMER_REFERENCE",
+                 "value": "Order Number or REFERENCE"
+                }
+					],				
+				"groupPackageCount":1,
+				"weight": {
+					"units": "LB",
+					"value": 5
+				}
+			}
+		]
+	},
+	"accountNumber": {
+		"value": "510087640"
+	}
+}
+
 console.log("Payload After checking ------------------->",newPayload)
 
  
  const validateResponse = await axios.post(
         "https://apis-sandbox.fedex.com/ship/v1/shipments/packages/validate",
-        newPayload,
+        demo_Payload,
         {
           headers: {
             authorization: `Bearer ${token.data.access_token}`,
@@ -400,7 +509,7 @@ console.log("Payload After checking ------------------->",newPayload)
     if (validateResponse.status === 200){
         const response = await axios.post(
       "https://apis-sandbox.fedex.com/ship/v1/shipments",
-      newPayload,
+      demo_Payload,
       {
         headers: {
           authorization: `Bearer ${token.data.access_token}`,
@@ -3720,7 +3829,7 @@ async function cancelBooking(req, res) {
   });
 
   await booking.update(
-    { status: false, bookingStatusId: 15 },
+    { status: true, bookingStatusId: 19 },
     { where: { id: bookingId } }
   );
 
@@ -3755,10 +3864,19 @@ async function expectedPackages(req, res) {
         model: package,
         attributes: ["id"],
         include: { model: ecommerceCompany, attributes: ["title"] },
-      },{
-          model:bookingHistory,
-          attributes:['date','time']
-      }
+      },
+      {
+        model: bookingHistory,
+        attributes: [
+          "id",
+          [
+            sequelize.fn("date_format", sequelize.col("date"), "%m-%d-%Y"),
+            "date",
+          ],
+          [sequelize.fn("date_format", sequelize.col("time"), "%r"), "time"],
+        ],
+        include: { model: bookingStatus, attributes: ["id", "title"] },
+      },
     ],
 
     attributes: [
@@ -3802,6 +3920,18 @@ async function packagesInWarehouse(req, res) {
         model: package,
         attributes: ["id"],
         include: { model: ecommerceCompany, attributes: ["title"] },
+      },
+      {
+        model: bookingHistory,
+        attributes: [
+          "id",
+          [
+            sequelize.fn("date_format", sequelize.col("date"), "%m-%d-%Y"),
+            "date",
+          ],
+          [sequelize.fn("date_format", sequelize.col("time"), "%r"), "time"],
+        ],
+        include: { model: bookingStatus, attributes: ["id", "title"] },
       },
     ],
     attributes: [
@@ -4430,12 +4560,10 @@ async function addAddress(req, res) {
     //return res.json(newAddress)
     //const checkPostalAddress =await fedex.validatePostalCode(newAddress)
     isValidPostalCodeRange(newAddress.postalCode,newAddress.country)
-    if(isValidPostalCodeRange === true){
       await userAddress.create({ addressDBId: newAddress.id, userId, type });
     return res.json(
       returnFunction("1", "Address Saved", { newAddress: newAddress.id }, "")
     );
-    }
   } else {
     throw new CustomException("Type not selected", "");
   }
@@ -7895,7 +8023,7 @@ async function stripeWebhook(req, res) {
       await bookingHistory.create({
         date: currentDate,
         time: currentTime,
-        bookingID,
+         bookingId:bookingID,
         bookingStatusId: status.id,
       });
       // Call function to create FedEx shipment and schedule pickup
