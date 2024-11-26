@@ -3804,23 +3804,37 @@ async function cancelBooking(req, res) {
   let { bookingId, reasonId, reasonText } = req.body;
 
   const bookingData = await booking.findOne({
-    where:{
-        id:bookingId,
+    where: {
+      id: bookingId,
     },
-    include:[{
-        model:package,
-        attributes:['arrived']
-    }],
-  attributes: ["bookingStatusId", "total", "id", "customerId"],
-});
-  console.log("🚀 ~ cancelBooking ~ bookingData:", bookingData.packages)
-  const packageArrived  = bookingData.packages.some(pkg=>pkg.arrived ==='arrived')
-  
-   if (packageArrived) {
+    include: [
+      {
+        model: package,
+        attributes: ['id', 'arrived'], 
+      },
+    ],
+    attributes: ["bookingStatusId", "total", "id", "customerId"],
+  });
+
+  console.log("🚀 ~ cancelBooking ~ bookingData:", bookingData.packages);
+
+  const packageArrived = bookingData.packages.some(pkg => pkg.arrived === 'arrived');
+
+  let packagesToUpdate = bookingData.packages.filter(pkg => pkg.arrived === 'pending');
+  console.log("packagesToUpdate=============>", packagesToUpdate);
+
+  if (packageArrived) {
     throw new CustomException("Your package is received. Now you cannot cancel the booking.");
   }
-  
-  
+
+  // Update the 'arrived' key value to 'cancelled' for packagesToUpdate
+  for (const pkg of packagesToUpdate) {
+    await package.update(
+      { arrived: 'cancelled' },
+      { where: { id: pkg.id } }
+    );
+  }
+
   await cancelledBooking.create({
     bookingId,
     userId: bookingData.customerId,
@@ -3832,6 +3846,20 @@ async function cancelBooking(req, res) {
     { status: true, bookingStatusId: 19 },
     { where: { id: bookingId } }
   );
+
+  let dt = Date.now();
+  let DT = new Date(dt);
+  let currentDate = `${DT.getFullYear()}-${
+    DT.getMonth() + 1
+  }-${DT.getDate()}`;
+  let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
+
+  await bookingHistory.create({
+    date: currentDate,
+    time: currentTime,
+    bookingId: bookingId,
+    bookingStatusId: 19,
+  });
 
   return res.json(returnFunction("1", "Booking Cancelled", {}, ""));
 }
