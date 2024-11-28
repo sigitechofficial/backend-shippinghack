@@ -28,6 +28,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+
   deploy_main:
     needs: build
     if: github.ref == 'refs/heads/main'
@@ -53,14 +54,15 @@ jobs:
 
       - name: Create config folder and files
         run: |
-          echo "Creating config folder..."
+          echo "Creating config folder...-for prod"
           mkdir -p config
-          echo "${{ secrets.CONFIG_JSON_CONTENT }}" > config/config.json
+          echo "${{ secrets.CONFIG_JSON_CONTENT_PROD }}" > config/config.json
 
-      - name: Create .htaccess file for production
+      - name: Create .htaccess file
         run: |
-          echo "Creating .htaccess file for production..."
+          echo "Creating .htaccess_prod file..."
           echo "${{ secrets.HTACCESS_CONTENT_PROD }}" > .htaccess
+
 
       - name: 📂 Sync files to production
         uses: SamKirkland/FTP-Deploy-Action@v4.2.0
@@ -72,17 +74,18 @@ jobs:
 
       - name: Trigger npm install on server
         run: |
-          echo "Triggering npm install via PHP script..."
-          curl -X GET "https://testing.theshippinghack.com/trigger.php"
+              echo "Triggering npm install via PHP script..."
+              curl -X GET "https://backend.theshippinghack.com/trigger.php"
         env:
             HOME: /home/theshippinghack
-
+            
   deploy_testing:
     needs: build
     if: github.ref == 'refs/heads/testing'
     runs-on: ubuntu-latest
 
     steps:
+      
       - name: 🚚 Get latest code
         uses: actions/checkout@v2
       - name: Create .env file dynamically
@@ -92,26 +95,29 @@ jobs:
 
       - name: Create config folder and files
         run: |
-          echo "Creating config folder..."
+          echo "Creating config folder...-for stage"
           mkdir -p config
-          echo "${{ secrets.CONFIG_JSON_CONTENT }}" > config/config.json
+          echo "${{ secrets.CONFIG_JSON_CONTENT_STAGE }}" > config/config.json
 
-      - name: Create .htaccess file for staging
+      - name: Create .htaccess file
         run: |
-          echo "Creating .htaccess file for staging..."
+          echo "Creating .htaccess_stage file..."
           echo "${{ secrets.HTACCESS_CONTENT_STAGE }}" > .htaccess
+
 
       - name: 📂 Sync files to development
         uses: SamKirkland/FTP-Deploy-Action@v4.2.0
         with:
           server: ftp.theshippinghack.com
-          username: ${{ secrets.TESTING_FTP_USERNAME }}
-          password: ${{ secrets.TESTING_FTP_PASSWORD }}
+          username: ${{ secrets.STAGE_FTP_USERNAME }}
+          password: ${{ secrets.STAGE_FTP_PASSWORD }}
           debug: true
 
       - name: Trigger npm install on server
         run: |
-          echo "Triggering npm install and pm2 start via PHP script..."
-          curl -X GET "https://testing.theshippinghack.com/trigger.php"
+            echo "Triggering npm install and pm2 start via PHP script..."
+            curl -X GET "https://stage.theshippinghack.com/trigger.php"
         env:
             HOME: /home/theshippinghack
+
+           
