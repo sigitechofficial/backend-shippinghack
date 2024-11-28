@@ -115,5 +115,3 @@ jobs:
         run: |
             echo "Triggering npm install and pm2 start via PHP script..."
             curl -X GET "https://stage.theshippinghack.com/trigger.php"
-
-            
