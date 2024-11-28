@@ -76,8 +76,6 @@ jobs:
         run: |
               echo "Triggering npm install via PHP script..."
               curl -X GET "https://backend.theshippinghack.com/trigger.php"
-        env:
-            HOME: /home/theshippinghack
 
   deploy_testing:
     needs: build
@@ -117,7 +115,3 @@ jobs:
         run: |
             echo "Triggering npm install and pm2 start via PHP script..."
             curl -X GET "https://stage.theshippinghack.com/trigger.php"
-        env:
-            HOME: /home/theshippinghack
-
-            
