@@ -280,9 +280,9 @@ function dateFormatDMY(dateStr) {
 
 // }
 async function createFedexShipmentLoc(bookingData) {
-    
-    
-  try{
+
+
+  try {
     const packageDetail = bookingData.packages.map((package, index) => ({
       groupPackageCount: index + 1,
       weight: {
@@ -292,13 +292,13 @@ async function createFedexShipmentLoc(bookingData) {
       },
     }));
     const currentDate = new Date();
-  
+
     const year = currentDate.getFullYear();
     const month = String(currentDate.getMonth() + 1).padStart(2, "0");
     const date = String(currentDate.getDate()).padStart(2, "0");
-  
+
     const formattedDate = `${year}-${month}-${date}`;
-  
+
     const token = await axios.post(
       "https://apis-sandbox.fedex.com/oauth/token",
       {
@@ -312,227 +312,329 @@ async function createFedexShipmentLoc(bookingData) {
         },
       }
     );
- 
-
-console.log("Payload checking ------------------->")
 
 
+    console.log("Payload checking ------------------->")
 
-console.log("bookingData.packages==============>",bookingData.packages)
 
+    // const newPayload = {
+    //   labelResponseOptions: "URL_ONLY",
+    //   requestedShipment: {
+    //     shipDatestamp: formattedDate, 
+    //     serviceType: "INTERNATIONAL_ECONOMY", 
+    //     packagingType: "YOUR_PACKAGING",
+    //     pickupType: "USE_SCHEDULED_PICKUP",
+    //     blockInsightVisibility: false,
+    //     shipper: {
+    //       contact: {
+    //         personName: bookingData.senderName.toUpperCase(),
+    //         phoneNumber: Number(bookingData.senderPhone.replace(/\D/g, "")),
+    //         companyName: "The Shipping Hack",
+    //       },
+    //       address: {
+    //                 streetLines: [bookingData.pickupAddress.streetAddress],
+    //                 city: bookingData.pickupAddress.city,
+    //                 stateOrProvinceCode: "PR",
+    //                 postalCode:bookingData.pickupAddress.postalCode,
+    //                 countryCode: "US",
+    //               }
+    //     },
+    //     recipients: [
+    //       {
+    //         contact: {
+    //           personName: bookingData.receiverName.toUpperCase(),
+    //           phoneNumber: Number(bookingData.receiverPhone.replace(/\D/g, "")),
+    //           companyName: "The Shipping Hack",
+    //         },
+    //       address: {
+    //                 streetLines: [bookingData.dropoffAddress.streetAddress],
+    //                 city:bookingData.dropoffAddress.city,
+    //                 stateOrProvinceCode: "PR",
+    //                 postalCode:bookingData.dropoffAddress.postalCode,
+    //                 countryCode: "US",
+    //               }
+    //       }
+    //     ],
+    //     shippingChargesPayment: {
+    //       paymentType: "THIRD_PARTY",
+    //       payor: {
+    //         responsibleParty: {
+    //           accountNumber: {
+    //             value: "510087640",
+    //           }
+    //         }
+    //       }
+    //     },
+    //     labelSpecification: {
+    //             imageType: "PDF",
+    //             labelStockType: "PAPER_85X11_TOP_HALF_LABEL",
+    //     },
+    //     requestedPackageLineItems:packageDetail,
+    //   },
+    //   accountNumber: {
+    //     value: "510087640",
+    //   }
+    // };
 
-const newPayload = {
-  labelResponseOptions: "URL_ONLY",
-  requestedShipment: {
-    shipDatestamp: formattedDate, 
-    serviceType: "INTERNATIONAL_ECONOMY", 
-    packagingType: "YOUR_PACKAGING",
-    pickupType: "USE_SCHEDULED_PICKUP",
-    blockInsightVisibility: false,
-    shipper: {
-      contact: {
-        personName: bookingData.senderName.toUpperCase(),
-        phoneNumber: Number(bookingData.senderPhone.replace(/\D/g, "")),
-        companyName: "The Shipping Hack",
-      },
-      address: {
-                streetLines: [bookingData.pickupAddress.streetAddress],
-                city: bookingData.pickupAddress.city,
-                stateOrProvinceCode: "PR",
-                postalCode:bookingData.pickupAddress.postalCode,
-                countryCode: "US",
-              }
-    },
-    recipients: [
-      {
-        contact: {
-          personName: bookingData.receiverName.toUpperCase(),
-          phoneNumber: Number(bookingData.receiverPhone.replace(/\D/g, "")),
-          companyName: "The Shipping Hack",
-        },
-      address: {
-                streetLines: [bookingData.dropoffAddress.streetAddress],
-                city:bookingData.dropoffAddress.city,
-                stateOrProvinceCode: "PR",
-                postalCode:bookingData.dropoffAddress.postalCode,
-                countryCode: "US",
-              }
-      }
-    ],
-    shippingChargesPayment: {
-      paymentType: "THIRD_PARTY",
-      payor: {
-        responsibleParty: {
-          accountNumber: {
-            value: "510087640",
-          }
-        }
-      }
-    },
-    labelSpecification: {
-            imageType: "PDF",
-            labelStockType: "PAPER_85X11_TOP_HALF_LABEL",
-    },
-    requestedPackageLineItems:packageDetail,
-  },
-  accountNumber: {
-    value: "510087640",
-  }
-};
-
-const demo_Payload={
-	"labelResponseOptions": "URL_ONLY",
-	"requestedShipment": {
-		"shipper": {
-			"contact": {
-				"personName": "JOHN DOW",
-				"phoneNumber": 1212121221,
-				"companyName": "The Shipping Hack"
-			},
-			"address": {
-				"streetLines": [
-					"500 Ave Josa de Diego"
-				],
-				"city": "Bayamon",
-				"stateOrProvinceCode": "PR",
-				"postalCode": "00961",
-				"countryCode": "US"
-			}
-		},
-		"recipients": [
-			{
-				"contact": {
-					"personName": "Juan Del Pueblo",
-					"phoneNumber": 1010101010,
-					"companyName": ""
-				},
-				"address": {
-					"streetLines": [
-						"151 Calle de San Francisco"
-					],
-					"city": "SAN JUAN",
-					"stateOrProvinceCode": "PR",
-					"postalCode": "00901",
-					"countryCode": "US"
-				}
-			}
-		],
-		"shipDatestamp": "2024-11-20",
-		"serviceType": "INTERNATIONAL_PRIORITY",
-		"packagingType": "YOUR_PACKAGING",
-		"pickupType": "USE_SCHEDULED_PICKUP",
-		"totalWeight": 18,
-		"blockInsightVisibility": false,
-		"shippingChargesPayment": {
-			"paymentType": "THIRD_PARTY",
-			"payor": {
-         	"responsibleParty": {
-            	"accountNumber": {
-              		"value": "510087640"
-					}			
-				}
-			}
-		},
-		"labelSpecification": {
-			"imageType": "PDF",
-			"labelStockType": "PAPER_85X11_TOP_HALF_LABEL"
-		},
-		
-		"customsClearanceDetail": {
-			"dutiesPayment": {
-				"paymentType": "THIRD_PARTY",
-				"payor": {
-         		"responsibleParty": {
-						"accountNumber": {
-              			"value": "510087640"
-						}			
-					}
-				}				
-			},
-			"isDocumentOnly": false,
-			"commodities": [
-				{
-					"description": "Commodity Description for International shipment",
-					"countryOfManufacture": "US",
-					"quantity": 1,
-					"quantityUnits": "PCS",
-					"unitPrice": {
-						"amount": 1.00,
-						"currency": "USD"
-					},
-					"weight": {
-						"units": "LB",
-						"value": 1
-					}
-				}
-				
-			]
-		},
-		"requestedPackageLineItems": [
-			{
-				 "customerReferences": [
-             {
-             "customerReferenceType": "CUSTOMER_REFERENCE",
-                 "value": "Order Number or REFERENCE"
-                }
-					],				
-				"groupPackageCount":1,
-				"weight": {
-					"units": "LB",
-					"value": 5
-				}
-			}
-		]
-	},
-	"accountNumber": {
-		"value": "510087640"
-	}
-}
-
-console.log("Payload After checking ------------------->",newPayload)
-
- 
- const validateResponse = await axios.post(
-        "https://apis-sandbox.fedex.com/ship/v1/shipments/packages/validate",
-        demo_Payload,
-        {
-          headers: {
-            authorization: `Bearer ${token.data.access_token}`,
-            "Content-Type": "application/json",
+    const adjustedDynamicPayload = {
+      labelResponseOptions: "URL_ONLY",
+      requestedShipment: {
+        shipDatestamp: formattedDate,
+        serviceType: "INTERNATIONAL_PRIORITY",
+        packagingType: "YOUR_PACKAGING",
+        pickupType: "USE_SCHEDULED_PICKUP",
+        totalWeight: bookingData.packages.reduce(
+          (sum, pkg) => sum + parseFloat(pkg.weight || 0),
+          0
+        ),
+        blockInsightVisibility: false,
+        shipper: {
+          contact: {
+            personName: bookingData.senderName.toUpperCase(),
+            phoneNumber: parseInt(bookingData.senderPhone.replace(/\D/g, "")),
+            companyName: "The Shipping Hack",
           },
-        }
-    );
-    
-   console.log("Validation response for package:", validateResponse.data.output);
-    
-    
-    if (validateResponse.status === 200){
-        const response = await axios.post(
-      "https://apis-sandbox.fedex.com/ship/v1/shipments",
-      demo_Payload,
+          address: {
+            streetLines: [bookingData.pickupAddress.streetAddress],
+            city: bookingData.pickupAddress.city,
+            stateOrProvinceCode: "PR",
+            postalCode: bookingData.pickupAddress.postalCode,
+            countryCode: "US",
+          },
+        },
+        recipients: [
+          {
+            contact: {
+              personName: bookingData.receiverName.toUpperCase(),
+              phoneNumber: parseInt(bookingData.receiverPhone.replace(/\D/g, "")),
+              companyName: "The Shipping Hack",
+            },
+            address: {
+              streetLines: [bookingData.dropoffAddress.streetAddress],
+              city: bookingData.dropoffAddress.city,
+              stateOrProvinceCode: "PR",
+              postalCode: bookingData.dropoffAddress.postalCode,
+              countryCode: "US",
+            },
+          },
+        ],
+        shippingChargesPayment: {
+          paymentType: "THIRD_PARTY",
+          payor: {
+            responsibleParty: {
+              accountNumber: {
+                value: "510087640",
+              },
+            },
+          },
+        },
+        labelSpecification: {
+          imageType: "PDF",
+          labelStockType: "PAPER_85X11_TOP_HALF_LABEL",
+        },
+        customsClearanceDetail: {
+          dutiesPayment: {
+            paymentType: "THIRD_PARTY",
+            payor: {
+              responsibleParty: {
+                accountNumber: {
+                  value: "510087640",
+                },
+              },
+            },
+          },
+          isDocumentOnly: false,
+          commodities: bookingData.packages.map((pkg) => ({
+            description: pkg.note || "Commodity Description for International shipment",
+            countryOfManufacture: "US",
+            quantity: pkg.quantity || 1,
+            quantityUnits: "PCS",
+            unitPrice: {
+              amount: pkg.unitPrice || 1.00,
+              currency: "USD",
+            },
+            weight: {
+              units: "LB",
+              value: parseFloat(pkg.weight) || 1,
+            },
+          })),
+        },
+        requestedPackageLineItems: bookingData.packages.map((pkg, index) => ({
+          customerReferences: [
+            {
+              customerReferenceType: "CUSTOMER_REFERENCE",
+              value: pkg.reference || "Order Number or REFERENCE",
+            },
+          ],
+          groupPackageCount: index + 1,
+          weight: {
+            units: "LB",
+            value: parseFloat(pkg.weight) || 1,
+          },
+        })),
+      },
+      accountNumber: {
+        value: "510087640",
+      },
+    };
+
+
+
+    // const demo_Payload={
+    // 	"labelResponseOptions": "URL_ONLY",
+    // 	"requestedShipment": {
+    // 		"shipper": {
+    // 			"contact": {
+    // 				"personName": "JOHN DOW",
+    // 				"phoneNumber": 1212121221,
+    // 				"companyName": "The Shipping Hack"
+    // 			},
+    // 			"address": {
+    // 				"streetLines": [
+    // 					"500 Ave Josa de Diego"
+    // 				],
+    // 				"city": "Bayamon",
+    // 				"stateOrProvinceCode": "PR",
+    // 				"postalCode": "00961",
+    // 				"countryCode": "US"
+    // 			}
+    // 		},
+    // 		"recipients": [
+    // 			{
+    // 				"contact": {
+    // 					"personName": "Juan Del Pueblo",
+    // 					"phoneNumber": 1010101010,
+    // 					"companyName": ""
+    // 				},
+    // 				"address": {
+    // 					"streetLines": [
+    // 						"151 Calle de San Francisco"
+    // 					],
+    // 					"city": "SAN JUAN",
+    // 					"stateOrProvinceCode": "PR",
+    // 					"postalCode": "00901",
+    // 					"countryCode": "US"
+    // 				}
+    // 			}
+    // 		],
+    // 		"shipDatestamp": "2024-11-20",
+    // 		"serviceType": "INTERNATIONAL_PRIORITY",
+    // 		"packagingType": "YOUR_PACKAGING",
+    // 		"pickupType": "USE_SCHEDULED_PICKUP",
+    // 		"totalWeight": 18,
+    // 		"blockInsightVisibility": false,
+    // 		"shippingChargesPayment": {
+    // 			"paymentType": "THIRD_PARTY",
+    // 			"payor": {
+    //          	"responsibleParty": {
+    //             	"accountNumber": {
+    //               		"value": "510087640"
+    // 					}			
+    // 				}
+    // 			}
+    // 		},
+    // 		"labelSpecification": {
+    // 			"imageType": "PDF",
+    // 			"labelStockType": "PAPER_85X11_TOP_HALF_LABEL"
+    // 		},
+
+    // 		"customsClearanceDetail": {
+    // 			"dutiesPayment": {
+    // 				"paymentType": "THIRD_PARTY",
+    // 				"payor": {
+    //          		"responsibleParty": {
+    // 						"accountNumber": {
+    //               			"value": "510087640"
+    // 						}			
+    // 					}
+    // 				}				
+    // 			},
+    // 			"isDocumentOnly": false,
+    // 			"commodities": [
+    // 				{
+    // 					"description": "Commodity Description for International shipment",
+    // 					"countryOfManufacture": "US",
+    // 					"quantity": 1,
+    // 					"quantityUnits": "PCS",
+    // 					"unitPrice": {
+    // 						"amount": 1.00,
+    // 						"currency": "USD"
+    // 					},
+    // 					"weight": {
+    // 						"units": "LB",
+    // 						"value": 1
+    // 					}
+    // 				}
+
+    // 			]
+    // 		},
+    // 		"requestedPackageLineItems": [
+    // 			{
+    // 				 "customerReferences": [
+    //              {
+    //              "customerReferenceType": "CUSTOMER_REFERENCE",
+    //                  "value": "Order Number or REFERENCE"
+    //                 }
+    // 					],				
+    // 				"groupPackageCount":1,
+    // 				"weight": {
+    // 					"units": "LB",
+    // 					"value": 5
+    // 				}
+    // 			}
+    // 		]
+    // 	},
+    // 	"accountNumber": {
+    // 		"value": "510087640"
+    // 	}
+    // }
+
+
+
+    const validateResponse = await axios.post(
+      "https://apis-sandbox.fedex.com/ship/v1/shipments/packages/validate",
+      adjustedDynamicPayload,
       {
         headers: {
           authorization: `Bearer ${token.data.access_token}`,
-          "X-locale": "en_US",
           "Content-Type": "application/json",
-          "x-customer-transaction-id": "624deea6-b709-470c-8c39-4b5511281492",
         },
       }
     );
-    return response;
-    }else{
-        throw new Error("Shipment validation failed");
+
+    console.log("Validation response for package:", validateResponse);
+
+
+    if (validateResponse.status === 200) {
+      const response = await axios.post(
+        "https://apis-sandbox.fedex.com/ship/v1/shipments",
+        adjustedDynamicPayload,
+        {
+          headers: {
+            authorization: `Bearer ${token.data.access_token}`,
+            "X-locale": "en_US",
+            "Content-Type": "application/json",
+            "x-customer-transaction-id": "624deea6-b709-470c-8c39-4b5511281492",
+          },
+        }
+      );
+      return response;
+    } else {
+      throw new Error("Shipment validation failed");
     }
-        
-    
+
+
+
+  } catch (error) {
+    if (error?.response) {
+      console.log("*************ERROR*****************", error?.response?.data.errors);
+      throw new CustomException(`${error?.response?.data.errors[0].code}:${error?.response?.data.errors[0].message}`);
+    } else {
+      throw new CustomException(`${error?.message}`)
+    }
+
   }
-  catch(error){
-    if(error.message){
-       console.log("*************ERROR*****************",error?.response?.data.errors);
-      throw new CustomException(`${error?.response?.data.errors[0].code}:${error?.response?.data.errors[0].message}`)
-  } 
-    
-}
+
 
 }
 //! function to create FedEx International shipment and schedule pickup
@@ -1214,7 +1316,7 @@ async function createFedexShipmentInt(bookingData) {
                 streetLines: [bookingData.dropoffAddress.streetAddress],
                 city: bookingData.dropoffAddress.city,
                 stateOrProvinceCode: "PR",
-                postalCode:bookingData.dropoffAddress.postalCode,
+                postalCode: bookingData.dropoffAddress.postalCode,
                 countryCode: "US",
               },
             },
@@ -1242,7 +1344,7 @@ async function createFedexShipmentInt(bookingData) {
             },
             commodities: [
               {
-                description:pkg.note,
+                description: pkg.note,
                 quantity: 1,
                 quantityUnits: "EA",
                 weight: {
@@ -1321,7 +1423,7 @@ async function createFedexShipmentInt(bookingData) {
             },
           }
         );
-        responses.push(shipmentResponse.data); 
+        responses.push(shipmentResponse.data);
       } else {
         throw new Error("Shipment validation failed");
       }
@@ -1329,297 +1431,16 @@ async function createFedexShipmentInt(bookingData) {
 
     return responses; // Return all shipment responses
   } catch (error) {
-    console.log(
-      "*************ERROR*****************",
-      error?.response?.data.errors
-    );
-    throw new CustomException(
-      `${error?.response?.data.errors[0].code}:${error?.response?.data.errors[0].message}`
-    );
-  }
-}
-
-//!function to create International Shipment Consolidate
-async function createFedexConsolidationRequest(bookingData) {
-  console.log("createFedex ConsolidationRequest function =====================>", bookingData);
- try{
-  const currentDate = new Date();
-  const currDate = currentDate.toISOString().split("T")[0];
-
-// const payload = {
-//     consolidationIndex: "Key2710",
-//     requestedConsolidation: {
-//       consolidationType: "INTERNATIONAL_ECONOMY_DISTRIBUTION",
-//       shipDate: currDate,
-//       shipper: {
-//         address: {
-//           streetLines: ["555 W 5th St"],
-//           city: "Los Angeles",
-//           stateOrProvinceCode: "CA",
-//           postalCode: "90013",
-//           countryCode: "US"
-//         },
-//         contact: {
-//           personName: bookingData.senderName.toUpperCase(),
-//           emailAddress: bookingData.senderEmail,
-//           phoneNumber: bookingData.senderPhone.replace(/\D/g, ""),
-//           companyName: "The Shipping Hack"
-//         },
-//         accountNumber: {
-//           value: "510087640"
-//         }
-//       },
-//       origin: {
-//         address: {
-//           streetLines: ["555 W 5th St"],
-//           city: "Los Angeles",
-//           stateOrProvinceCode: "CA",
-//           postalCode: "90013",
-//           countryCode: "US"
-//         },
-//         contact: {
-//           personName: bookingData.senderName.toUpperCase(),
-//           emailAddress: bookingData.senderEmail,
-//           phoneNumber: bookingData.senderPhone.replace(/\D/g, ""),
-//           companyName: "The Shipping Hack"
-//         }
-//       },
-//       soldTo: {
-//         address: {
-//           streetLines: ["151 Calle de San Francisco"],
-//           city: "San Juan",
-//           stateOrProvinceCode: "PR",
-//           postalCode: "00901",
-//           countryCode: "US",
-//           residential: false
-//         },
-//         contact: {
-//           personName: bookingData.receiverName.toUpperCase(),
-//           emailAddress: bookingData.receiverEmail,
-//           phoneNumber: bookingData.receiverPhone.replace(/\D/g, ""),
-//           companyName: "The Shipping Hack"
-//         }
-//       },
-//       bookingNumber: bookingData.bookingNumber || "1234", // Specify booking number if available
-//     //   distributionLocation: {
-//     //     type: "CUSTOMER_SPECIFIED",
-//     //     locationNumber: 0,
-//     //     id: "123",
-//     //     locationId: "YBZA",
-//     //     locationContactAndAddress: {
-//     //       contact: {
-//     //         personName: bookingData.receiverName.toUpperCase(),
-//     //         emailAddress: bookingData.receiverEmail,
-//     //         phoneNumber: bookingData.receiverPhone.replace(/\D/g, ""),
-//     //         companyName: "The Shipping Hack"
-//     //       },
-//     //       address: {
-//     //         streetLines: ["Bldg. 10", "10 FedEx Parkway"],
-//     //         city: "Beverly Hills",
-//     //         stateOrProvinceCode: "CA",
-//     //         postalCode: "38127",
-//     //         countryCode: "US",
-//     //         residential: false
-//     //       }
-//     //     }
-//     //   },
-//     //   consolidationDataSources: [
-//     //     {
-//     //       consolidationDataType: "TOTAL_INSURED_VALUE",
-//     //       consolidationDataSourceType: "ACCUMULATED"
-//     //     }
-//     //   ],
-//     //   customerReferences: [
-//     //     {
-//     //       customerReferenceType: "CUSTOMER_REFERENCE",
-//     //       value: "USD"
-//     //     }
-//     //   ],
-//       customsClearanceDetail: {
-//         dutiesPayment: {
-//           paymentType: "THIRD_PARTY",
-//           payor: {
-//             responsibleParty: {
-//               accountNumber: {
-//                 value: "510087640"
-//               }
-//             }
-//           }
-//         },
-//         documentContent: "NON_DOCUMENTS",
-//         commodities: bookingData.packages.map(pkg => ({
-//           description: pkg.note,
-//           quantity: 1,
-//           quantityUnits: "EA",
-//           weight: {
-//             units: "LB",
-//             value: Number(pkg.weight)
-//           },
-//           customsValue: {
-//             amount: Number(pkg.value),
-//             currency: "USD"
-//           },
-//           countryOfManufacture: "US",
-//           unitPrice: {
-//             amount: Number(pkg.value),
-//             currency: "USD"
-//           }
-//         })),
-//         totalCustomsValue: {
-//           amount: Number(bookingData.total),
-//           currency: "USD"
-//         }
-//       },
-//       internationalDistributionDetail: {
-//         dropOffType: "DROP_BOX",
-//         totalDimensions: {
-//           length: 20, 
-//           width: 15, 
-//           height: 10, 
-//           units: "IN"
-//         },
-//         totalInsuredValue: {
-//           amount: 1000, // replace with actual insured value
-//           currency: "USD"
-//         },
-//         unitSystem: "ENGLISH",
-//         declaredCurrencies: {
-//           currency: "USD",
-//           value: "CUSTOMS_VALUE"
-//         },
-//         clearanceFacilityLocationId: "MEMI" // replace with actual clearance facility location ID
-//       },
-//       labelSpecification: {
-//         imageType: "PDF",
-//         labelStockType: "PAPER_85X11_TOP_HALF_LABEL"
-//       }
-//     },
-//     accountNumber: {
-//       value: "510087640"
-//     }
-//   };
-
-
-const payload = {
-  consolidationIndex: "Key2710",
-  requestedConsolidation: {
-    consolidationType: "INTERNATIONAL_ECONOMY_DISTRIBUTION",
-    shipDate: currDate,
-    shipper: {
-      address: {
-        streetLines: ["555 W 5th St"],
-        city: "Los Angeles",
-        stateOrProvinceCode: "CA",
-        postalCode: "90013",
-        countryCode: "US"
-      },
-      contact: {
-        personName: bookingData.senderName.toUpperCase(),
-        emailAddress: bookingData.senderEmail,
-        phoneNumber: bookingData.senderPhone.replace(/\D/g, ""),
-        companyName: "The Shipping Hack"
-      }
-    },
-    internationalDistributionDetail: {
-      clearanceFacilityLocationId: "USLAXA",
-      totalDimensions: {
-        length: 10,
-        width: 5,
-        height: 8,
-        units: "IN"
-      },
-      totalInsuredValue: {
-        amount: Number(bookingData.subTotal),
-        currency: "USD"
-      },
-      unitSystem: "ENGLISH",
-      declaredCurrencies: {
-        currency: "USD"
-      }
-    },
-    customsClearanceDetail: {
-      dutiesPayment: {
-        paymentType: "THIRD_PARTY",
-        payor: {
-          responsibleParty: {
-            accountNumber: {
-              value: "510087640"
-            }
-          }
-        }
-      },
-      documentContent: "NON_DOCUMENTS",
-    //   commodities: bookingData.packages.map(pkg => ({
-    //     description: pkg.note,
-    //     quantity: 1,
-    //     quantityUnits: "EA",
-    //     weight: {
-    //       units: "LB",
-    //       value: Number(pkg.weight)
-    //     },
-    //     customsValue: {
-    //       amount: Number(pkg.value),
-    //       currency: "USD"
-    //     },
-    //     countryOfManufacture: "US",
-    //     unitPrice: {
-    //       amount: Number(pkg.value),
-    //       currency: "USD"
-    //     }
-    //   })),
-      totalCustomsValue: {
-        amount: Number(bookingData.subTotal),
-        currency: "USD"
-      }
-    },
-    labelSpecification: {
-      imageType: "PDF",
-      labelStockType: "PAPER_85X11_TOP_HALF_LABEL"
+    if (error?.response) {
+      console.log("*************ERROR*****************", error?.response?.data.errors);
+      throw new CustomException(`${error?.response?.data.errors[0].code}:${error?.response?.data.errors[0].message}`);
+    } else {
+      throw new CustomException(`${error?.message}`)
     }
-  },
-  accountNumber: {
-    value: "510087640"
-  }
-};
 
-     const token = await axios.post(
-      "https://apis-sandbox.fedex.com/oauth/token",
-      {
-        grant_type: "client_credentials",
-        client_id: process.env.client_id,
-        client_secret: process.env.client_secret,
-      },
-      {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      }
-    );
-    
-    console.log("Token========>",token.data.access_token)
-    
-    const response = await axios.post(
-      "https://apis-sandbox.fedex.com/consolidation/v1/consolidations",
-      payload,
-      {
-        headers: {
-              authorization: `Bearer ${token.data.access_token}`,
-              "X-locale": "en_US",
-              "Content-Type": "application/json",
-              "x-customer-transaction-id":
-                "624deea6-b709-470c-8c39-4b5511281493",
-            },
-      }
-    );
-    console.log("FedEx Consolidation Response:", response.data);
-    return response.data;
-  } catch (error) {
-    console.error("Error in FedEx Consolidation Request:", error.response.data.errors);
-    throw new CustomException(
-      `${error?.response?.data.errors[0].code}:${error?.response?.data.errors[0].message}`
-    );
   }
 }
+
 
 // ! Module 1 : Auth - Customer On Boarding
 // ! _________________________________________________________________________________________________________________________________
@@ -3082,9 +2903,9 @@ async function homepage(req, res) {
 
 //! function for calculating Total Weight, Total Dimenssional Weight and charged weight
 async function calculateWeights(packages, divisor) {
-    console.log("Packages===========>Consolidate",packages);
-    console.log("divisor===========>divisor",divisor);
-    
+  console.log("Packages===========>Consolidate", packages);
+  console.log("divisor===========>divisor", divisor);
+
   let weight = 0;
   let dimensionalWeight = 0;
   let chargedWeight = 0;
@@ -3810,7 +3631,7 @@ async function cancelBooking(req, res) {
     include: [
       {
         model: package,
-        attributes: ['id', 'arrived'], 
+        attributes: ['id', 'arrived'],
       },
     ],
     attributes: ["bookingStatusId", "total", "id", "customerId"],
@@ -3849,9 +3670,8 @@ async function cancelBooking(req, res) {
 
   let dt = Date.now();
   let DT = new Date(dt);
-  let currentDate = `${DT.getFullYear()}-${
-    DT.getMonth() + 1
-  }-${DT.getDate()}`;
+  let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1
+    }-${DT.getDate()}`;
   let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
 
   await bookingHistory.create({
@@ -4044,7 +3864,7 @@ async function logisticCompanies(req, res) {
     data.actualWidth = unitConversions(data.actualWidth, appUnitData.lengthUnit.conversionRate);
     data.actualHeight = unitConversions(data.actualHeight, appUnitData.lengthUnit.conversionRate);
     data.actualWeight = unitConversions(data.actualWeight, appUnitData.weightUnit.conversionRate);
-    
+
     // calculating volume
     data.actualVolume = data.actualLength * data.actualWidth * data.actualHeight;
   });
@@ -4070,15 +3890,15 @@ async function logisticCompanies(req, res) {
         dimensionalWeight: Math.round(weightsData.dimensionalWeight),
         chargedWeight: weightsData.chargedWeight,
       };
-      
-      
-       let companyAdded = false;
+
+
+      let companyAdded = false;
       for (let charge of company.logisticCompanyCharges) {
         if (weightsData.chargedWeight >= charge.startValue && weightsData.chargedWeight < charge.endValue) {
           comp.charges = (charge.charges * weightsData.chargedWeight).toFixed(2);
           comp.ETA = charge.ETA;
           comp.flash = charge.flash;
-           if (!companyAdded) {  // Add company only once
+          if (!companyAdded) {  // Add company only once
             arryofCompanies.push(comp);
             companyAdded = true;
           }
@@ -4587,8 +4407,8 @@ async function addAddress(req, res) {
     console.log("🚀 ~ addAddress ~ newAddress:", newAddress)
     //return res.json(newAddress)
     //const checkPostalAddress =await fedex.validatePostalCode(newAddress)
-    isValidPostalCodeRange(newAddress.postalCode,newAddress.country)
-      await userAddress.create({ addressDBId: newAddress.id, userId, type });
+    isValidPostalCodeRange(newAddress.postalCode, newAddress.country)
+    await userAddress.create({ addressDBId: newAddress.id, userId, type });
     return res.json(
       returnFunction("1", "Address Saved", { newAddress: newAddress.id }, "")
     );
@@ -4966,36 +4786,36 @@ async function orderDetails(req, res) {
       ],
       bookingData.logisticCompany.divisor
     );
-  } else if(bookingData.logisticCompany){
-    weightData=await calculateWeights(
-        bookingData.packages,
-        bookingData.logisticCompany.divisor
-      )
+  } else if (bookingData.logisticCompany) {
+    weightData = await calculateWeights(
+      bookingData.packages,
+      bookingData.logisticCompany.divisor
+    )
   }
-  
+
   let chargedWeight = weightData?.chargedWeight;
   if (typeof chargedWeight === 'string') {
-      console.log("String==========================>")
+    console.log("String==========================>")
     chargedWeight = chargedWeight.trim().replace(/^0+/, ''); // Remove leading zeros
   }
 
   bookingData.dataValues.billableWeight = parseFloat(chargedWeight).toFixed(2);
-  
+
   console.log("bookingData.dataValues.billableWeight==================>>>>>", bookingData.dataValues.billableWeight);
   // return res.json(returnFunction('1', `Booking Details ${bookingId}`, bookingData, ''))
   const bookingStatuses = await bookingStatus.findAll({
     where:
       bookingData.deliveryTypeId === 2
         ? {
-            id: {
-              [Op.notIn]: [13, 14, 15, 16, 17, 18],
-            },
-          }
-        : {
-            id: {
-              [Op.notIn]: [9, 14, 15, 20, 21, 22],
-            },
+          id: {
+            [Op.notIn]: [13, 14, 15, 16, 17, 18],
           },
+        }
+        : {
+          id: {
+            [Op.notIn]: [9, 14, 15, 20, 21, 22],
+          },
+        },
     attributes: ["id", "title", "description"],
   });
   let cancelledData = {
@@ -5071,7 +4891,7 @@ async function orderDetails(req, res) {
 
   // applying conversion
   let convertedPackages = bookingData.packages.map((data) => {
-  if (bookingData.bookingTypeId == 6) {
+    if (bookingData.bookingTypeId == 6) {
       let clength = unitConversionsR(
         data.length,
         bookingData.appUnit.lengthUnit.conversionRate
@@ -5105,8 +4925,8 @@ async function orderDetails(req, res) {
         volume: cvolume,
         ETA: data.ETA,
         note: data.note,
-        logisticCompanyTrackingNum:data.logisticCompanyTrackingNum,
-        fedexLabel:data.fedexLabel,
+        logisticCompanyTrackingNum: data.logisticCompanyTrackingNum,
+        fedexLabel: data.fedexLabel,
         //arrived: data.arrived,
         category:
           data.category.title.toLowerCase() === "other"
@@ -5152,7 +4972,7 @@ async function orderDetails(req, res) {
         ETA: data.ETA,
         note: data.note,
         arrived: data.arrived,
-        fedexLabel:data.fedexLabel,
+        fedexLabel: data.fedexLabel,
         category:
           data.category.title.toLowerCase() === "other"
             ? `${data.category.title}(${data.catText})`
@@ -5195,8 +5015,8 @@ async function orderDetails(req, res) {
         ETA: data.ETA,
         note: data.note,
         arrived: data.arrived,
-        logisticCompanyTrackingNum:data.logisticCompanyTrackingNum,
-        fedexLabel:data.fedexLabel,
+        logisticCompanyTrackingNum: data.logisticCompanyTrackingNum,
+        fedexLabel: data.fedexLabel,
         category:
           data.category.title.toLowerCase() === "other"
             ? `${data.category.title}(${data.catText})`
@@ -5645,9 +5465,8 @@ async function makepaymentBySavedCard(req, res) {
             });
             let dt = Date.now();
             let DT = new Date(dt);
-            let currentDate = `${DT.getFullYear()}-${
-              DT.getMonth() + 1
-            }-${DT.getDate()}`;
+            let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1
+              }-${DT.getDate()}`;
             let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
             await bookingHistory.create({
               date: currentDate,
@@ -5825,9 +5644,8 @@ async function makepaymentBySavedCard(req, res) {
             });
             let dt = Date.now();
             let DT = new Date(dt);
-            let currentDate = `${DT.getFullYear()}-${
-              DT.getMonth() + 1
-            }-${DT.getDate()}`;
+            let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1
+              }-${DT.getDate()}`;
             let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
             await bookingHistory.create({
               date: currentDate,
@@ -7124,48 +6942,48 @@ async function bookingDetailsByTracking(req, res) {
         bookingData.shipmentType === null
           ? {}
           : {
-              shipmentType: `${bookingData.shipmentType.title}`,
-              category: `${bookingData.category.title}`,
-              size: `${bookingData.length}x${bookingData.width}x${bookingData.height} ${bookingData.lengthUnitB.symbol}<sup>3</sup> (${bookingData.size.title})`,
-              weight: `${bookingData.weight} ${bookingData.weightUnitB.symbol}`,
-              distance: `${bookingData.distance} ${defaultDistanceUnit.symbol}`,
-              pickupDate: `${bookingData.pickupDate}`,
-              ETA: `${bookingData.ETA}`,
-              subTotal: `${defaultCurrencyUnit.symbol}${bookingData.subTotal}`,
-              discount: `${defaultCurrencyUnit.symbol}${bookingData.discount}`,
-              orderTotal: `${defaultCurrencyUnit.symbol}${bookingData.total}`,
-            },
+            shipmentType: `${bookingData.shipmentType.title}`,
+            category: `${bookingData.category.title}`,
+            size: `${bookingData.length}x${bookingData.width}x${bookingData.height} ${bookingData.lengthUnitB.symbol}<sup>3</sup> (${bookingData.size.title})`,
+            weight: `${bookingData.weight} ${bookingData.weightUnitB.symbol}`,
+            distance: `${bookingData.distance} ${defaultDistanceUnit.symbol}`,
+            pickupDate: `${bookingData.pickupDate}`,
+            ETA: `${bookingData.ETA}`,
+            subTotal: `${defaultCurrencyUnit.symbol}${bookingData.subTotal}`,
+            discount: `${defaultCurrencyUnit.symbol}${bookingData.discount}`,
+            orderTotal: `${defaultCurrencyUnit.symbol}${bookingData.total}`,
+          },
     },
     receivingDriver:
       bookingData.receivingDriver === null
         ? {}
         : {
-            name: `${bookingData.receivingDriver.firstName} ${bookingData.receivingDriver.lastName}`,
-            email: `${bookingData.receivingDriver.email}`,
-            phone: `${bookingData.receivingDriver.countryCode} ${bookingData.receivingDriver.phoneNum}`,
-            memberSince: `${bookingData.receivingDriver.dataValues.joinedOn}`,
-            image: `${bookingData.receivingDriver.image}`,
-          },
+          name: `${bookingData.receivingDriver.firstName} ${bookingData.receivingDriver.lastName}`,
+          email: `${bookingData.receivingDriver.email}`,
+          phone: `${bookingData.receivingDriver.countryCode} ${bookingData.receivingDriver.phoneNum}`,
+          memberSince: `${bookingData.receivingDriver.dataValues.joinedOn}`,
+          image: `${bookingData.receivingDriver.image}`,
+        },
     transporterGuy:
       bookingData.transporter === null
         ? {}
         : {
-            name: `${bookingData.transporter.firstName} ${bookingData.transporter.lastName}`,
-            email: `${bookingData.transporter.email}`,
-            phone: `${bookingData.transporter.countryCode} ${bookingData.transporter.phoneNum}`,
-            memberSince: `${bookingData.transporter.dataValues.joinedOn}`,
-            image: `${bookingData.transporter.image}`,
-          },
+          name: `${bookingData.transporter.firstName} ${bookingData.transporter.lastName}`,
+          email: `${bookingData.transporter.email}`,
+          phone: `${bookingData.transporter.countryCode} ${bookingData.transporter.phoneNum}`,
+          memberSince: `${bookingData.transporter.dataValues.joinedOn}`,
+          image: `${bookingData.transporter.image}`,
+        },
     deliveryDriver:
       bookingData.deliveryDriver === null
         ? {}
         : {
-            name: `${bookingData.deliveryDriver.firstName} ${bookingData.deliveryDriver.lastName}`,
-            email: `${bookingData.deliveryDriver.email}`,
-            phone: `${bookingData.deliveryDriver.countryCode} ${bookingData.deliveryDriver.phoneNum}`,
-            memberSince: `${bookingData.deliveryDriver.dataValues.joinedOn}`,
-            image: `${bookingData.deliveryDriver.image}`,
-          },
+          name: `${bookingData.deliveryDriver.firstName} ${bookingData.deliveryDriver.lastName}`,
+          email: `${bookingData.deliveryDriver.email}`,
+          phone: `${bookingData.deliveryDriver.countryCode} ${bookingData.deliveryDriver.phoneNum}`,
+          memberSince: `${bookingData.deliveryDriver.dataValues.joinedOn}`,
+          image: `${bookingData.deliveryDriver.image}`,
+        },
     bookingHistory: historyArray,
   };
   return res.json(returnFunction("1", "Booking details", outObj, ""));
@@ -7936,13 +7754,13 @@ async function findLanguage(userId) {
 
 
 function convertToDollars(cents) {
-  return (cents / 100).toFixed(2); 
+  return (cents / 100).toFixed(2);
 }
 
 //===========checkout Sessions=================//
 async function checkoutSessionsCheck(req, res) {
-  const { amount,bookingType,bookingId } = req.body;
-  console.log("req.body in ==============================>",req.body);
+  const { amount, bookingType, bookingId } = req.body;
+  console.log("req.body in ==============================>", req.body);
   const UserId = req.user.id;
 
   const userData = await user.findOne({ where: { id: UserId } });
@@ -7961,135 +7779,188 @@ async function checkoutSessionsCheck(req, res) {
 //========================Stripe Webhooks for Session Completed========================//
 async function stripeWebhook(req, res) {
   //const endpointSecret = "whsec_febTITVhHXIIyjFfuVvCuFMR70zCi3qV";
-  const endpointSecret="whsec_vBPiSfLR7q0nYzt0NLIXpYKMgm5Ls2uc";
-    console.log("req.headers====================================>",req.headers)
-    const sig=req.headers['stripe-signature'];
-    let event;
-  
-    try {
-        
-      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-      console.log("evernt=============================>",event)
-    
-    } catch (err) {
-      console.log(`���️ Error deconstructing event: ${err.message}`);
-      return res.status(400).send(`Error deconstructing event: ${err.message}`);
-    }
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
-       const bookingID = session.metadata.bookingId;
-       const realAmount=session.metadata.real_amount;
-       const amount=convertToDollars(realAmount);
-       const bookingUpdate = await booking.update(
-        { paymentConfirmed: true },
-        { where: { id: bookingID } }
-      );
-      const bookingData = await booking.findOne({
-        where: { id: bookingID },
-        include: [
-          {
-            model: addressDBS,
-            as: "pickupAddress",
-            attributes: [
-              "streetAddress",
-              "building",
-              "floor",
-              "apartment",
-              "district",
-              "city",
-              "province",
-              "country",
-              "postalCode",
-            ],
-          },
-          {
-            model: addressDBS,
-            as: "dropoffAddress",
-            attributes: [
-              "streetAddress",
-              "building",
-              "floor",
-              "apartment",
-              "district",
-              "city",
-              "province",
-              "country",
-              "postalCode",
-            ],
-          },
-          {
-            model: package,
-            where:{
-              arrived:'arrived',
-            },
-            attributes: {
-              exclude: [
-                "barcode",
-                "total",
-                "status",
-                "createdAt",
-                "updatedAt",
-                "bookingId",
-                "ecommerceCompanyId",
-                "categoryId",
-              ],
-            },
-          },
-        ],
-      });
-      const status = await bookingStatus.findOne({
-        where: {
-          title: "Ready to Ship",
+  const endpointSecret = "whsec_vBPiSfLR7q0nYzt0NLIXpYKMgm5Ls2uc";
+  console.log("req.headers====================================>", req.headers)
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    console.log("evernt=============================>", event)
+
+  } catch (err) {
+    console.log(`���️ Error deconstructing event: ${err.message}`);
+    return res.status(400).send(`Error deconstructing event: ${err.message}`);
+  }
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const bookingID = session.metadata.bookingId;
+    const realAmount = session.metadata.real_amount;
+    const amount = convertToDollars(realAmount);
+    const bookingUpdate = await booking.update(
+      { paymentConfirmed: true },
+      { where: { id: bookingID } }
+    );
+    const bookingData = await booking.findOne({
+      where: { id: bookingID },
+      include: [
+        {
+          model: addressDBS,
+          as: "pickupAddress",
+          attributes: [
+            "streetAddress",
+            "building",
+            "floor",
+            "apartment",
+            "district",
+            "city",
+            "province",
+            "country",
+            "postalCode",
+          ],
         },
-      });
-      let dt = Date.now();
-      let DT = new Date(dt);
-      let currentDate = `${DT.getFullYear()}-${
-        DT.getMonth() + 1
-      }-${DT.getDate()}`;
-      let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
-      await bookingHistory.create({
-        date: currentDate,
-        time: currentTime,
-         bookingId:bookingID,
-        bookingStatusId: status.id,
-      });
-      // Call function to create FedEx shipment and schedule pickup
-      console.log(" Fedex local function Call------------>");
-  
-      if (bookingData.bookingTypeId == 6) {
-        const fedexShipment = await createFedexShipmentLoc(bookingData);
-        const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
-        const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
-        
-        
-        
-        bookingData.logisticCompanyTrackingNum = trackingNumber;
-        bookingData.label = label
-        bookingData.subTotal = amount;
-        bookingData.total = amount;
-        bookingData.bookingStatusId = status.id;
-        bookingData.save();
-        
-        for(let i=0;i<bookingData.packages.length;i++){
-              const pkg=bookingData.packages[i];
-              await pkg.update({
-                logisticCompanyTrackingNum:trackingNumber,
-                fedexLabel:label
-              })
-            }
-        
-        
-         const outObj = {
-      logisticCompanyTrackingNum: [
-        { trackingNumber: trackingNumber }
+        {
+          model: addressDBS,
+          as: "dropoffAddress",
+          attributes: [
+            "streetAddress",
+            "building",
+            "floor",
+            "apartment",
+            "district",
+            "city",
+            "province",
+            "country",
+            "postalCode",
+          ],
+        },
+        {
+          model: package,
+          where: {
+            arrived: 'arrived',
+          },
+          attributes: {
+            exclude: [
+              "barcode",
+              "total",
+              "status",
+              "createdAt",
+              "updatedAt",
+              "bookingId",
+              "ecommerceCompanyId",
+              "categoryId",
+            ],
+          },
+        },
       ],
-      label: [
-        { label: label }
-      ]
-    };
-    
-    
+    });
+    const status = await bookingStatus.findOne({
+      where: {
+        title: "Ready to Ship",
+      },
+    });
+    let dt = Date.now();
+    let DT = new Date(dt);
+    let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1
+      }-${DT.getDate()}`;
+    let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
+    await bookingHistory.create({
+      date: currentDate,
+      time: currentTime,
+      bookingId: bookingID,
+      bookingStatusId: status.id,
+    });
+    // Call function to create FedEx shipment and schedule pickup
+    console.log(" Fedex local function Call------------>");
+
+    if (bookingData.bookingTypeId == 6) {
+      const fedexShipment = await createFedexShipmentLoc(bookingData);
+      const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
+      const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
+
+
+
+      bookingData.logisticCompanyTrackingNum = trackingNumber;
+      bookingData.label = label
+      bookingData.subTotal = amount;
+      bookingData.total = amount;
+      bookingData.bookingStatusId = status.id;
+      bookingData.save();
+
+      for (let i = 0; i < bookingData.packages.length; i++) {
+        const pkg = bookingData.packages[i];
+        await pkg.update({
+          logisticCompanyTrackingNum: trackingNumber,
+          fedexLabel: label
+        })
+      }
+
+
+      const outObj = {
+        logisticCompanyTrackingNum: [
+          { trackingNumber: trackingNumber }
+        ],
+        label: [
+          { label: label }
+        ]
+      };
+
+
+      const response = returnFunction(
+        "1",
+        "Payment successfully Done",
+        outObj,
+        ""
+      );
+      return res.json(response);
+    } else if (bookingData.bookingTypeId === 1) {
+      console.log("Consolidation is false=====================>")
+      const fedexShipment = await createFedexShipmentInt(bookingData);
+
+      console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
+
+      if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
+        const extractedShipments = fedexShipment.map((shipment) => {
+          const transactionShipment = shipment.output.transactionShipments[0];
+          return {
+            trackingNumber:
+              transactionShipment.pieceResponses[0].trackingNumber,
+            label:
+              transactionShipment.pieceResponses[0].packageDocuments[0].url,
+          };
+        });
+
+        // If bookingData needs to store only the first shipment
+        bookingData.logisticCompanyTrackingNum =
+          extractedShipments.map((track) => ({
+            trackingNumber: track.trackingNumber
+          }));
+        bookingData.label = extractedShipments.map((shipment) => ({
+          label: shipment.label
+        }));
+        bookingData.bookingStatusId = status.id;
+        await bookingData.save();
+
+
+        for (let i = 0; i < bookingData.packages.length; i++) {
+          const pkg = bookingData.packages[i];
+          await pkg.update({
+            logisticCompanyTrackingNum: extractedShipments[i].trackingNumber,
+            fedexLabel: extractedShipments[i].label
+          })
+        }
+
+        let outObj = {
+          logisticCompanyTrackingNum: extractedShipments.map((track) => ({
+            trackingNumber: track.trackingNumber
+          })),
+          label: extractedShipments.map((shipment) => ({
+            label: shipment.label
+          })),
+          //allShipments: extractedShipments, // Optionally return all extracted shipments
+        };
+
         const response = returnFunction(
           "1",
           "Payment successfully Done",
@@ -8097,62 +7968,8 @@ async function stripeWebhook(req, res) {
           ""
         );
         return res.json(response);
-      } else if (bookingData.bookingTypeId === 1) {
-          console.log("Consolidation is false=====================>")
-        const fedexShipment = await createFedexShipmentInt(bookingData);
-  
-        console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
-  
-        if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
-          const extractedShipments = fedexShipment.map((shipment) => {
-            const transactionShipment = shipment.output.transactionShipments[0];
-            return {
-              trackingNumber:
-                transactionShipment.pieceResponses[0].trackingNumber,
-              label:
-                transactionShipment.pieceResponses[0].packageDocuments[0].url,
-            };
-          });
-  
-          // If bookingData needs to store only the first shipment
-          bookingData.logisticCompanyTrackingNum =
-            extractedShipments.map((track)=>({
-                trackingNumber:track.trackingNumber
-            }));
-          bookingData.label = extractedShipments.map((shipment)=>({
-              label:shipment.label
-          }));
-          bookingData.bookingStatusId = status.id;
-          await bookingData.save();
-          
-          
-            for(let i=0;i<bookingData.packages.length;i++){
-              const pkg=bookingData.packages[i];
-              await pkg.update({
-                logisticCompanyTrackingNum:extractedShipments[i].trackingNumber,
-                fedexLabel:extractedShipments[i].label
-              })
-            }
-  
-          let outObj = {
-            logisticCompanyTrackingNum: extractedShipments.map((track)=>({
-                trackingNumber:track.trackingNumber
-            })),
-            label: extractedShipments.map((shipment)=>({
-              label:shipment.label
-          })),
-            //allShipments: extractedShipments, // Optionally return all extracted shipments
-          };
-  
-          const response = returnFunction(
-            "1",
-            "Payment successfully Done",
-            outObj,
-            ""
-          );
-          return res.json(response);
-        }
       }
+    }
     //   else if(bookingData.bookingTypeId ===1 && bookingData.consolidation===true){
     //     const fedexShipment=await createFedexConsolidationRequest(bookingData)
     //     console.log("��� ~ retrieveSession ~ fedexShipment:", fedexShipment)
@@ -8178,8 +7995,8 @@ async function stripeWebhook(req, res) {
     //       }));
     //       bookingData.bookingStatusId = status.id;
     //       await bookingData.save();
-          
-          
+
+
     //         for(let i=0;i<bookingData.packages.length;i++){
     //           const pkg=bookingData.packages[i];
     //           await pkg.update({
@@ -8187,7 +8004,7 @@ async function stripeWebhook(req, res) {
     //             fedexLabel:extractedShipments[i].label
     //           })
     //         }
-  
+
     //       let outObj = {
     //         logisticCompanyTrackingNum: extractedShipments.map((track)=>({
     //             trackingNumber:track.trackingNumber
@@ -8197,7 +8014,7 @@ async function stripeWebhook(req, res) {
     //       })),
     //         //allShipments: extractedShipments, // Optionally return all extracted shipments
     //       };
-  
+
     //       const response = returnFunction(
     //         "1",
     //         "Payment successfully Done",
@@ -8207,131 +8024,185 @@ async function stripeWebhook(req, res) {
     //       return res.json(response);
 
     //   }
-    
+
     // }
-    
-    }
-  
+
   }
-  
+
+}
+
 
 //===========Get Sesion=====================>
 
-  async function retrieveSession(req, res) {
-    const  sessionId  = req.query.sessionId;
-    console.log("🚀 ~ retrieveSession ~ sessionId:",sessionId)
-    const  bookingId  = req.query.bookingId;
-    console.log("req.query.bookingId=================>",req.query.bookingId)
-    const amount=req.query.amount;
-  
-    const sesionFind = await stripeFunction.retrieveCheckoutSession(sessionId);
-    console.log("🚀 ~ retrieveSession ~ sesionFind:", sesionFind);
-  
-    if (sesionFind === "paid") {
-      const bookingData = await booking.findOne({
-        where: { id: bookingId },
-        include: [
-          {
-            model: addressDBS,
-            as: "pickupAddress",
-            attributes: [
-              "streetAddress",
-              "building",
-              "floor",
-              "apartment",
-              "district",
-              "city",
-              "province",
-              "country",
-              "postalCode",
-            ],
-          },
-          {
-            model: addressDBS,
-            as: "dropoffAddress",
-            attributes: [
-              "streetAddress",
-              "building",
-              "floor",
-              "apartment",
-              "district",
-              "city",
-              "province",
-              "country",
-              "postalCode",
-            ],
-          },
-          {
-            model: package,
-            attributes: {
-              exclude: [
-                "barcode",
-                "total",
-                "status",
-                "createdAt",
-                "updatedAt",
-                "bookingId",
-                "ecommerceCompanyId",
-                "categoryId",
-              ],
-            },
-          },
-        ],
-      });
-      const status = await bookingStatus.findOne({
-        where: {
-          title: "Ready to Ship",
+async function retrieveSession(req, res) {
+  const sessionId = req.query.sessionId;
+  console.log("🚀 ~ retrieveSession ~ sessionId:", sessionId)
+  const bookingId = req.query.bookingId;
+  console.log("req.query.bookingId=================>", req.query.bookingId)
+  const amount = req.query.amount;
+
+  const sesionFind = await stripeFunction.retrieveCheckoutSession(sessionId);
+  console.log("🚀 ~ retrieveSession ~ sesionFind:", sesionFind);
+
+  if (sesionFind === "paid") {
+    const bookingData = await booking.findOne({
+      where: { id: bookingId },
+      include: [
+        {
+          model: addressDBS,
+          as: "pickupAddress",
+          attributes: [
+            "streetAddress",
+            "building",
+            "floor",
+            "apartment",
+            "district",
+            "city",
+            "province",
+            "country",
+            "postalCode",
+          ],
         },
-      });
-      let dt = Date.now();
-      let DT = new Date(dt);
-      let currentDate = `${DT.getFullYear()}-${
-        DT.getMonth() + 1
+        {
+          model: addressDBS,
+          as: "dropoffAddress",
+          attributes: [
+            "streetAddress",
+            "building",
+            "floor",
+            "apartment",
+            "district",
+            "city",
+            "province",
+            "country",
+            "postalCode",
+          ],
+        },
+        {
+          model: package,
+          attributes: {
+            exclude: [
+              "barcode",
+              "total",
+              "status",
+              "createdAt",
+              "updatedAt",
+              "bookingId",
+              "ecommerceCompanyId",
+              "categoryId",
+            ],
+          },
+        },
+      ],
+    });
+    const status = await bookingStatus.findOne({
+      where: {
+        title: "Ready to Ship",
+      },
+    });
+    let dt = Date.now();
+    let DT = new Date(dt);
+    let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1
       }-${DT.getDate()}`;
-      let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
-      await bookingHistory.create({
-        date: currentDate,
-        time: currentTime,
-        bookingId,
-        bookingStatusId: status.id,
-      });
-      // Call function to create FedEx shipment and schedule pickup
-      console.log(" Fedex local function Call------------>");
-  
-      if (bookingData.bookingTypeId == 6) {
-        const fedexShipment = await createFedexShipmentLoc(bookingData);
-        const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
-        const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
-        
-        
-        
-        bookingData.logisticCompanyTrackingNum = trackingNumber;
-        bookingData.label = label
-        bookingData.subTotal = amount;
-        bookingData.total = amount;
+    let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
+    await bookingHistory.create({
+      date: currentDate,
+      time: currentTime,
+      bookingId,
+      bookingStatusId: status.id,
+    });
+    // Call function to create FedEx shipment and schedule pickup
+    console.log(" Fedex local function Call------------>");
+
+    if (bookingData.bookingTypeId == 6) {
+      const fedexShipment = await createFedexShipmentLoc(bookingData);
+      const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
+      const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
+
+
+
+      bookingData.logisticCompanyTrackingNum = trackingNumber;
+      bookingData.label = label
+      bookingData.subTotal = amount;
+      bookingData.total = amount;
+      bookingData.paymentConfirmed = true;
+      bookingData.bookingStatusId = status.id;
+      bookingData.save();
+
+      for (let i = 0; i < bookingData.packages.length; i++) {
+        const pkg = bookingData.packages[i];
+        await pkg.update({
+          logisticCompanyTrackingNum: trackingNumber,
+          fedexLabel: label
+        })
+      }
+
+
+      const outObj = {
+        logisticCompanyTrackingNum: [
+          { trackingNumber: trackingNumber }
+        ],
+        label: [
+          { label: label }
+        ]
+      };
+
+
+      const response = returnFunction(
+        "1",
+        "Payment successfully Done",
+        outObj,
+        ""
+      );
+      return res.json(response);
+    } else if (bookingData.bookingTypeId == 1) {
+      const fedexShipment = await createFedexShipmentInt(bookingData);
+
+      console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
+
+      if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
+        const extractedShipments = fedexShipment.map((shipment) => {
+          const transactionShipment = shipment.output.transactionShipments[0];
+          return {
+            trackingNumber:
+              transactionShipment.pieceResponses[0].trackingNumber,
+            label:
+              transactionShipment.pieceResponses[0].packageDocuments[0].url,
+          };
+        });
+        console.log("extractedShipments===========================>", extractedShipments)
+
+        // If bookingData needs to store only the first shipment
+        bookingData.logisticCompanyTrackingNum =
+          extractedShipments.map((track) => ({
+            trackingNumber: track.trackingNumber
+          }));
+        bookingData.label = extractedShipments.map((shipment) => ({
+          label: shipment.label
+        }));
         bookingData.paymentConfirmed = true;
         bookingData.bookingStatusId = status.id;
-        bookingData.save();
-        
-        for(let i=0;i<bookingData.packages.length;i++){
-              const pkg=bookingData.packages[i];
-              await pkg.update({
-                logisticCompanyTrackingNum:trackingNumber,
-                fedexLabel:label
-              })
-            }
-        
-        
-         const outObj = {
-      logisticCompanyTrackingNum: [
-        { trackingNumber: trackingNumber }
-      ],
-      label: [
-        { label: label }
-      ]
-    };
-    
-    
+        await bookingData.save();
+
+
+        for (let i = 0; i < bookingData.packages.length; i++) {
+          const pkg = bookingData.packages[i];
+          await pkg.update({
+            logisticCompanyTrackingNum: extractedShipments[i].trackingNumber,
+            fedexLabel: extractedShipments[i].label
+          })
+        }
+
+        let outObj = {
+          logisticCompanyTrackingNum: extractedShipments.map((track) => ({
+            trackingNumber: track.trackingNumber
+          })),
+          label: extractedShipments.map((shipment) => ({
+            label: shipment.label
+          })),
+          //allShipments: extractedShipments, // Optionally return all extracted shipments
+        };
+
         const response = returnFunction(
           "1",
           "Payment successfully Done",
@@ -8339,79 +8210,24 @@ async function stripeWebhook(req, res) {
           ""
         );
         return res.json(response);
-      } else if (bookingData.bookingTypeId == 1) {
-        const fedexShipment = await createFedexShipmentInt(bookingData);
-  
-        console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
-  
-        if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
-          const extractedShipments = fedexShipment.map((shipment) => {
-            const transactionShipment = shipment.output.transactionShipments[0];
-            return {
-              trackingNumber:
-                transactionShipment.pieceResponses[0].trackingNumber,
-              label:
-                transactionShipment.pieceResponses[0].packageDocuments[0].url,
-            };
-          });
-          console.log("extractedShipments===========================>",extractedShipments)
-  
-          // If bookingData needs to store only the first shipment
-          bookingData.logisticCompanyTrackingNum =
-            extractedShipments.map((track)=>({
-                trackingNumber:track.trackingNumber
-            }));
-          bookingData.label = extractedShipments.map((shipment)=>({
-              label:shipment.label
-          }));
-          bookingData.paymentConfirmed = true;
-          bookingData.bookingStatusId = status.id;
-          await bookingData.save();
-          
-          
-            for(let i=0;i<bookingData.packages.length;i++){
-              const pkg=bookingData.packages[i];
-              await pkg.update({
-                logisticCompanyTrackingNum:extractedShipments[i].trackingNumber,
-                fedexLabel:extractedShipments[i].label
-              })
-            }
-  
-          let outObj = {
-            logisticCompanyTrackingNum: extractedShipments.map((track)=>({
-                trackingNumber:track.trackingNumber
-            })),
-            label: extractedShipments.map((shipment)=>({
-              label:shipment.label
-          })),
-            //allShipments: extractedShipments, // Optionally return all extracted shipments
-          };
-  
-          const response = returnFunction(
-            "1",
-            "Payment successfully Done",
-            outObj,
-            ""
-          );
-          return res.json(response);
-        }
       }
-    }else{
-  
-      throw new CustomException("Session retrived But Payment Pending")
-  
     }
+  } else {
+
+    throw new CustomException("Session retrived But Payment Pending")
+
   }
+}
 
 //retrive Intent
-async function intentGet(req,res) {
- const intentId = req.query.intentId;
+async function intentGet(req, res) {
+  const intentId = req.query.intentId;
   //let intentID=intentId.toString()
   console.log("🚀 ~ intentGet ~ intentId:", intentId)
-  const {bookingId,amount}=req.body
+  const { bookingId, amount } = req.body
   console.log("🚀 ~ intentGet ~ intentId:", intentId)
 
-  const intentFind=await stripeFunction.retriveIntent(intentId)
+  const intentFind = await stripeFunction.retriveIntent(intentId)
   console.log("🚀 ~ intentGet ~ intentFind:", intentFind.status)
   if (intentFind.status === "succeeded") {
     const bookingData = await booking.findOne({
@@ -8471,9 +8287,8 @@ async function intentGet(req,res) {
     });
     let dt = Date.now();
     let DT = new Date(dt);
-    let currentDate = `${DT.getFullYear()}-${
-      DT.getMonth() + 1
-    }-${DT.getDate()}`;
+    let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1
+      }-${DT.getDate()}`;
     let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
     await bookingHistory.create({
       date: currentDate,
@@ -8488,9 +8303,9 @@ async function intentGet(req,res) {
       const fedexShipment = await createFedexShipmentLoc(bookingData);
       const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
       const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
-      
-      
-      
+
+
+
       bookingData.logisticCompanyTrackingNum = trackingNumber;
       bookingData.label = label
       bookingData.subTotal = amount;
@@ -8498,26 +8313,26 @@ async function intentGet(req,res) {
       bookingData.paymentConfirmed = true;
       bookingData.bookingStatusId = status.id;
       bookingData.save();
-      
-      for(let i=0;i<bookingData.packages.length;i++){
-            const pkg=bookingData.packages[i];
-            await pkg.update({
-              logisticCompanyTrackingNum:trackingNumber,
-              fedexLabel:label
-            })
-          }
-      
-      
-       const outObj = {
-    logisticCompanyTrackingNum: [
-      { trackingNumber: trackingNumber }
-    ],
-    label: [
-      { label: label }
-    ]
-  };
-  
-  
+
+      for (let i = 0; i < bookingData.packages.length; i++) {
+        const pkg = bookingData.packages[i];
+        await pkg.update({
+          logisticCompanyTrackingNum: trackingNumber,
+          fedexLabel: label
+        })
+      }
+
+
+      const outObj = {
+        logisticCompanyTrackingNum: [
+          { trackingNumber: trackingNumber }
+        ],
+        label: [
+          { label: label }
+        ]
+      };
+
+
       const response = returnFunction(
         "1",
         "Payment successfully Done",
@@ -8533,7 +8348,7 @@ async function intentGet(req,res) {
       // Check if fedexShipment is a valid array and has elements
       if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
         const extractedShipments = fedexShipment.map((shipment) => {
-          const transactionShipment = shipment.output.transactionShipments[0]; 
+          const transactionShipment = shipment.output.transactionShipments[0];
           return {
             trackingNumber:
               transactionShipment.pieceResponses[0].trackingNumber,
@@ -8541,24 +8356,24 @@ async function intentGet(req,res) {
               transactionShipment.pieceResponses[0].packageDocuments[0].url,
           };
         });
-  
+
         // If bookingData needs to store only the first shipment
         bookingData.logisticCompanyTrackingNum =
-          extractedShipments.map((track)=>({
-              trackingNumber:track.trackingNumber
+          extractedShipments.map((track) => ({
+            trackingNumber: track.trackingNumber
           }));
-        bookingData.label = extractedShipments.map((shipment)=>({
-            label:shipment.label
+        bookingData.label = extractedShipments.map((shipment) => ({
+          label: shipment.label
         }));
         bookingData.paymentConfirmed = true;
         bookingData.bookingStatusId = status.id;
         await bookingData.save();
 
-        for(let i=0;i<bookingData.packages.length;i++){
-          const pkg=bookingData.packages[i];
+        for (let i = 0; i < bookingData.packages.length; i++) {
+          const pkg = bookingData.packages[i];
           await pkg.update({
-            logisticCompanyTrackingNum:extractedShipments[i].trackingNumber,
-            fedexLabel:extractedShipments[i].label
+            logisticCompanyTrackingNum: extractedShipments[i].trackingNumber,
+            fedexLabel: extractedShipments[i].label
           })
         }
 
@@ -8577,7 +8392,7 @@ async function intentGet(req,res) {
         return res.json(response);
       }
     }
-  }else{
+  } else {
 
     return res.json(returnFunction("1", "Session retrived But Payment Pending"));
 
@@ -8598,12 +8413,12 @@ async function trackFedexOrder(req, res) {
 function isValidPostalCodeRange(postalCode, country) {
   let isValid = false;
   if (country === "USA" || country === "United States") {
-      const zip = parseInt(postalCode, 10);
-      isValid = zip >= 501 && zip <= 99950; // USA range
+    const zip = parseInt(postalCode, 10);
+    isValid = zip >= 501 && zip <= 99950; // USA range
   } else if (country === "Puerto Rico" || country === "PR") {
-      const zip = parseInt(postalCode, 10);
-      isValid = zip >= 601 && zip <= 988; // Puerto Rico range
-  }else{
+    const zip = parseInt(postalCode, 10);
+    isValid = zip >= 601 && zip <= 988; // Puerto Rico range
+  } else {
     throw new CustomException("Invalid postal code")
   }
   return isValid;
