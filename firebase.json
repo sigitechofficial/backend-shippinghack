@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "theshippinghack",
+  "private_key_id": "6c49ab913ba5723ddd6d3ddc509ddfb8e61bc8ed",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQC6/0ESIh2m+bhU\nYmxxiQWGyWaF6dDiY34+GT6YbEwIKoT+CiTaG78QIBLPOuFRlaLb2umn3qf6SdxX\naQRcHFy+QMojmRnHlOet8Duz/KxFW197MpNmEWxA23IttG7ZEAWHl+9Ouv2hRfvn\ng4+D8KlqR2ut0rNaaS0bVWjAOiONxXp4iLpVcOnG6TPZpaH0QHC9gk/6YTy1sb+h\nQrYK0qNg7KjHwOYCZgD3DwHl1CsmZOG4Y7d42s48sQoIUBpQKejmefMnUMKU7Nzd\nTg9U5Qlsfyl7qg1YBJZcfqSmzGkNmdntFwFqMzvz/yXeFWzdVt3ED4AkPQTO6BSZ\nQfeDBcIVAgMBAAECggEAKDtKsLAOWSJY+i7CzhqAyeMC38TSYCKvwoSD5x9FrGwZ\neN6N1y8pCDseUN+GIptjEpIiuy84TK0fbt71RSwE+BnQY6BI35u1zMJm1e6C0dk6\nzbKv68HL3JhaFGNBhgngZq/VmMa6UrxP2huAAQ8CJA+Bp0Axvj3qqnrRsqnPhGyd\nGCoEg9f2Wu7jr5xUTZxlHMP6UcODiLfRpNkFSod+1gdnPXXGJ8iNSYdRS2D+nNSi\nlKp9toXNIFQDC5+ulVlMRLlwvf2MB0cLTzGYTNu6wLz1Td9F2kjDP7yGuPyjwpvm\nUoej2DXYY9YW0KcCtOhvwFlpvgLLBzjJUMDx9YAeAQKBgQD+cNtJXQSp6PeB0mpF\n1hAfRNCKVu7PNgS/ZucwRzXi5+Z3gVgCa4nIC+3Awo/0c40PLamGL1ZGLla5VB/r\nIbwXiNjRC0YJqugYe01wBe04NWb7Nsgj1EX4IEDx+k802fMCoASlOL6HT139WzOp\njY5iof3BC+rkaJCVXIXoDoxKtQKBgQC8JJkYHgiRvAGNc/MsS8i08geOxpBTRvfV\nXhzhtuOJGwIHpU+fcInGR6RcwjL3MSZpk5FoPsc073eFghnGqBOW3dpDBMK3FWRd\nuWzp/n/+mMd1URKl35EOEUBpu1Djv3WVwAAEB70scT1AgAQyyoiPTu4M0DICAZ2R\nzRH/gYJV4QKBgQDwsXn/kIrU4JkiqhX2MmXV7pcIBuyqAAPFvGZ++R40pAMUkbrb\nrzcLkp06d9MOADE0ZpGzahxHD5bign4fRC5WZRIVzoBWrOIaJqo+ipy5S2s7wbra\nifgWnQxS2+MJsBN+LDm4wlEaVy4meZwJjOtgyrTtZYSyxWfgo0HZH8n+8QKBgQC1\nrBVUr3OQ3d0V7PfMNyWIbAkWOfCVKXsYwjbbUZGnC7hLD7qx96ZiGz3AABncjc5M\nthz7b1tGZ1GfToB7TkMUNAeVHVy0E2kGA44C6ShI/NflFbMPDrFvxwLO1fyG3pK5\nVlvtiFeIOZRu2u6y6NUypIHDR6pyO4MejcmqUjE7oQKBgQDeO5svKXaA0FsAjgJ/\nCLHdWu3GKqDh81ACkUHR9vQlM8XTx0d+DI6BB3gouItbhw3+6hp4tKU8R+HbqHsb\nV4gquqxsg95cHyAWPzd39A04FWYf1BzL/j2I7aIXW8N/RIF2K4F3YSvDu9nkeBOg\nPnia2DPvjunOWKqZmap45IbmGA==\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-h4k24@theshippinghack.iam.gserviceaccount.com",
+  "client_id": "111285821295897920412",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-h4k24%40theshippinghack.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
