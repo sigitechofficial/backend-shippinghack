@@ -9,7 +9,7 @@ $nodeBinPath = '/home/theshippinghack/node/bin'; // Path to node binaries
 putenv("PATH=$nodeBinPath:" . getenv('PATH')); // Prepend nodeBinPath to system PATH
 
 // Define the process name for clarity
-$processName = 'shippingHack.js';
+$processName = 'theshippinghack.js';
 
 // Commands for PM2 management
 $pm2StopDeleteCommand = "pm2 stop $processName || true && pm2 delete $processName || true";
