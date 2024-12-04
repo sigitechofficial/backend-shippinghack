@@ -4651,6 +4651,11 @@ async function orderDetails(req, res) {
     include: [
       { model: logisticCompany },
       {
+        model: user,
+        as: "customer",
+        attributes: ["virtualBox", "firstName", 'lastName', 'email', 'countryCode', 'phoneNum']
+      },
+      {
         model: addressDBS,
         as: "pickupAddress",
         attributes: [

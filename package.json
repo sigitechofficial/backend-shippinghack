@@ -2,10 +2,10 @@
   "name": "6.-pps-logistica",
   "version": "1.0.0",
   "description": "",
-  "main": "shippinghack.js",
+  "main": "shippingHack.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon -L shippinghack.js"
+    "start": "nodemon -L shippingHack.js"
   },
   "keywords": [],
   "author": "",

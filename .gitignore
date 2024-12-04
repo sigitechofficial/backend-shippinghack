@@ -9,6 +9,7 @@ dist/
 config/
 *.env
 Public/
+firebase.json/
 # Compiled Java class files
 *.class
 

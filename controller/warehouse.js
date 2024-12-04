@@ -1077,6 +1077,7 @@ async function bookingDetailsById(req, res) {
             "actualHeight",
             "actualVolume",
             'logisticCompanyTrackingNum',
+            "fedexLabel"
           ],
           include: [
             { model: category, attributes: ["title"] },
