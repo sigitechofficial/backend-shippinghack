@@ -2151,6 +2151,21 @@ async function signInUser(req, res) {
       returnFunction("3", `Sign-up by ${signedBy}`, { userId }, "")
     );
   }
+
+  if (
+    userData &&
+    ["google", "apple", "facebook"].includes(userData.signedFrom) &&
+    !signedBy
+  ) {
+    return res.json(
+      returnFunction(
+        "4",
+        "Social Login Required",
+        {},
+        `You have previously signed up using ${userData.signedFrom}. Please log in using ${userData.signedFrom}.`
+      )
+    );
+  }
   // if  user trying to login without getting registered
   else if (!userData && signedBy === "")
     throw new CustomException(
@@ -4534,6 +4549,13 @@ async function myOrders(req, res) {
           include: { model: units, as: "currencyUnit", attributes: ["symbol"] },
           attributes: ["id"],
         },
+        {
+            model: package,
+            include:{
+                model:ecommerceCompany,
+                attributes:['title']
+            }
+        }
       ],
       order: [["createdAt", "DESC"]],
     }),
@@ -4578,6 +4600,13 @@ async function myOrders(req, res) {
           include: { model: units, as: "currencyUnit", attributes: ["symbol"] },
           attributes: ["id"],
         },
+        {
+            model: package,
+            include:{
+                model:ecommerceCompany,
+                attributes:['title']
+            }
+        }
       ],
       order: [["createdAt", "DESC"]],
     }),
@@ -4586,6 +4615,8 @@ async function myOrders(req, res) {
     returnFunction("1", "My Orders", { internationalOrders, localOrders }, "")
   );
 }
+
+
 /*
             7. choose Logistic Company
     _________________________________________________________
@@ -7764,7 +7795,7 @@ function convertToDollars(cents) {
 
 //===========checkout Sessions=================//
 async function checkoutSessionsCheck(req, res) {
-  const { amount, bookingType, bookingId } = req.body;
+  const { amount, bookingType, bookingId,successUrl,cancelUrl} = req.body;
   console.log("req.body in ==============================>", req.body);
   const UserId = req.user.id;
 
@@ -7776,6 +7807,8 @@ async function checkoutSessionsCheck(req, res) {
     userData.stripeCustomerId,
     bookingType,
     bookingId,
+    successUrl,
+    cancelUrl
   );
 
   return res.json(returnFunction("1", "Session Created", session));
