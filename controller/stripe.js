@@ -528,16 +528,20 @@ async function createSubscriptionWithPriceId(customerId, priceId) {
 }
 
 
-async function checkoutSessions(amount, userId, bookingType,bookingId) {
+async function checkoutSessions(amount, userId, bookingType,bookingId,successUrl,cancelUrl) {
   console.log("🚀 ~ checkoutSessions ~ bookingType:", bookingId);
+  const finalSuccessUrl = successUrl || "https://stageweb.theshippinghack.com/payment-success";
+    const finalCancelUrl = cancelUrl || (
+      bookingType === 'international'
+        ? 'https://stageweb.theshippinghack.com/parcel-detail'
+        : 'https://stageweb.theshippinghack.com/send-parcel-locally-detail'
+    );
   try {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
-      success_url: "https://dev.theshippinghack.com/payment-success",
-      cancel_url: bookingType === 'international'
-        ? 'https://dev.theshippinghack.com/parcel-detail'
-        : 'https://dev.theshippinghack.com/send-parcel-locally-detail',  
+      success_url: finalSuccessUrl,
+      cancel_url: finalCancelUrl,  
       customer: userId,
       line_items: [
         {
