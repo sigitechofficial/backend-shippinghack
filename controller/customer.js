@@ -7816,8 +7816,16 @@ async function checkoutSessionsCheck(req, res) {
 
 //========================Stripe Webhooks for Session Completed========================//
 async function stripeWebhook(req, res) {
-  //const endpointSecret = "whsec_febTITVhHXIIyjFfuVvCuFMR70zCi3qV";
-  const endpointSecret = "whsec_vBPiSfLR7q0nYzt0NLIXpYKMgm5Ls2uc";
+  let endpointSecret;
+  if(process.env.NODE_ENV !== 'production'){
+     endpointSecret = "whsec_febTITVhHXIIyjFfuVvCuFMR70zCi3qV";
+     console.log("🚀 ~ stripeWebhook IF ~ endpointSecret:", endpointSecret)
+  }else{
+     endpointSecret = "whsec_vBPiSfLR7q0nYzt0NLIXpYKMgm5Ls2uc";
+     console.log("🚀 ~ stripeWebhook ELSE ~ endpointSecret:", endpointSecret)
+
+  }
+  
   console.log("req.headers====================================>", req.headers)
   const sig = req.headers['stripe-signature'];
   let event;
