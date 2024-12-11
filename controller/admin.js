@@ -34,6 +34,7 @@ const {
   banner,
   coupon,
   unitClass,
+  classifiedAs,
   support,
   FAQs,
   generalCharges,
@@ -125,8 +126,16 @@ async function signIn(req, res) {
   const { email, password, dvToken } = req.body;
   // Find the admin data based on email, status, and classifiedAId
   const adminData = await warehouse.findOne({
-    where: { email, status: true, classifiedAId: [1, 2] },
+    where: { 
+      email, 
+      status: true, 
+      classifiedAId: [1, 2]},
+      include:[{
+        model:classifiedAs,
+      }
+      ] 
   });
+  console.log("🚀 ~ signIn ~ adminData:", adminData.classifiedA.name)
   if (!adminData) {
     throw new CustomException("User not found", "Please enter valid data");
   }
@@ -154,6 +163,7 @@ async function signIn(req, res) {
     name: adminData.name,
     email: adminData.email,
     accessToken,
+    adminType:adminData.classifiedA.name,
   };
   // Retrieve feature data where status is true
   const featureData = await feature.findAll({
