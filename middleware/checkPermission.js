@@ -7,6 +7,7 @@ module.exports = async function validateToken(req,res, next){
         let userData = await warehouse.findByPk(req.user.id, {
             attributes: ['classifiedAId', 'roleId']
         });
+        console.log("🚀 ~ validateToken ~ userData:", userData)
         let method = req.method.toLowerCase();
         method = method === 'get'? 'read': method === 'post'? 'create': method === 'put'? 'update': method;   
         if(userData.classifiedAId === 1) next()
