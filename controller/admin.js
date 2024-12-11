@@ -62,6 +62,7 @@ const {
   restrictedItems,
 } = require("../models");
 const getDistance = require("../utils/distanceCalculator");
+const { fn, col,where  } = require("sequelize");
 const { DOMImplementation, XMLSerializer } = require("xmldom");
 const xmlSerializer = new XMLSerializer();
 const document = new DOMImplementation().createDocument(
@@ -1252,8 +1253,13 @@ async function changeBannerStatus(req, res) {
 */
 async function addCategory(req, res) {
   const { title, charge } = req.body;
-  const catExist = await category.findOne({where: {title}});
-  if(catExist) throw CustomException('A category with the following name already exist', 'Please try some other name');
+  const catExist = await category.findOne({
+    where: {
+      title:title,
+      status: true,
+    }
+  });
+  if(catExist) throw new CustomException('A category with the following name already exist', 'Please try some other name');
   const newCategory=  category.create({ title, charge, status: true })
 
   return res.json(returnFunction("1", "Category added", {id : newCategory.id}, ""));
@@ -2579,11 +2585,25 @@ async function registerStep3(req, res) {
  *    Update Driver
  */
 async function updateDriverProfile(req, res) {
-  const { firstName, lastName, email, countryCode, phoneNum, userId } =
+  const { firstName, lastName, email, countryCode, phoneNum, userId,isProfileChanged } =
     req.body;
+    
+    console.log("req.body======================>",req.body)
+    
+    
+     if (isProfileChanged === "true") {
+      if (!req.file) {
+        throw new CustomException(
+          "Profile picture is required",
+          "Please add profile image"
+        );
+      }
+      tmpprofileImage = req.file.path;
+      profileImage = tmpprofileImage.replace(/\\/g, "/");
+    }
 
   // check if user with same eamil and phoneNum exists
-  if (email || phoneNum) {
+  if (email) {
     const userExist = await user.findOne({
       where: {
         [Op.or]: [
@@ -2592,7 +2612,6 @@ async function updateDriverProfile(req, res) {
             ? {
                 [Op.and]: [
                   { countryCode: countryCode },
-                  { phonenum: phoneNum },
                 ],
               }
             : null,
@@ -2607,14 +2626,6 @@ async function updateDriverProfile(req, res) {
         throw new CustomException(
           "Users exists",
           "The email you entered is already taken"
-        );
-      else if (
-        phoneNum === userExist.phoneNum &&
-        countryCode === userExist.countryCode
-      )
-        throw new CustomException(
-          "Users exists",
-          "The phone number you entered is already taken"
         );
     }
   }
@@ -3264,20 +3275,6 @@ async function getAllbookings(req, res) {
               bookingTypeId: req.query.bookingType,
             }
           : { status: true, [Op.not]: [{ appUnitId: null }] },
-        {
-          [Op.or]: [
-            {
-              "$receivingWarehouse.located$": req.query.located || {
-                [Op.ne]: null,
-              },
-            },
-            {
-              "$deliveryWarehouse.located$": req.query.located || {
-                [Op.ne]: null,
-              },
-            },
-          ],
-        },
       ],
     },
     include: [
@@ -3857,7 +3854,7 @@ async function orderDetatils(req, res) {
       //     // weight: await unitsConversion(bookingData.totalWeight, bookingData.appUnitId, 'wei'),//& upadted
       // },
       senderDetails:bookingData.customer?{
-        number: `+${bookingData.customer.countryCode}${bookingData.customer.phoneNum}`,
+        number: `${bookingData.customer.countryCode}${bookingData.customer.phoneNum}`,
         name: `${bookingData.customer.firstName} ${bookingData.customer.lastName}`,
         email: `${bookingData.customer.email}`,
         virtualBoxNumber: `${bookingData.customer.virtualBox}`
@@ -4578,7 +4575,7 @@ async function resendNot(req,res){
 
 async function delNot(req,res){
     const {notId} = req.body;
-    pushNotification.update({deleted: true}, {where: {id: notId}});
+    await pushNotification.destroy({where: {id: notId}});
     return res.json(returnFunction('1', 'Push Notifications deleted', {}, ''))
 };
 
@@ -5099,6 +5096,9 @@ async function getChargesForLog(req,res){
   condition.status=true;
   condition.deleted=false;
   if(req.query.logisticCompanyId)condition.logisticCompanyId=req.query.logisticCompanyId
+  console.log("🚀 ~ getChargesForLog ~ req.query.logisticCompanyId:", req.query.logisticCompanyId)
+  console.log("condition",condition);
+  
   if(req.query.flash)condition.flash=req.query.flash
   const charges=await logisticCompanyCharges.findAll({where:
     condition,include:{model:logisticCompany,attributes:['id','title']}})
@@ -5444,31 +5444,52 @@ async function updatePrivacyPolicy(req, res) {
   return res.json(returnFunction("1", "Privacy Policy Updated", {}, ""));
 }
 
+
+
+
 async function homePage(req, res) {
   let adminId = req.user.id;
   let nowDate = Date.now();
   let todayStart = new Date(nowDate);
+
+  // Format today's date as YYYY-MM-DD
   let today_start = `${todayStart.getFullYear()}-${(
     "0" +
     (todayStart.getMonth() + 1)
   ).slice(-2)}-${("0" + todayStart.getDate()).slice(-2)}`;
+  console.log("today_start====today_start", today_start);
+
   const userData = await user.findAll({
     where: { deletedAt: { [Op.is]: null } },
     attributes: ["userTypeId", "status"],
   });
+
   const numOfBookings = await booking.count({
     where: { paymentConfirmed: true },
   });
+
   const numOfWarehouses = await warehouse.count({
     where: { status: true, classifiedAId: 3 },
   });
+
   const earnings = await booking.sum("total", {
     where: { paymentConfirmed: true },
   });
-  const todayEarnings = await booking.sum("total", {
-    where: { pickupDate: { [Op.eq]: today_start }, paymentConfirmed: true },
-  });
-  const balance = await wallet.sum("amount", { where: { adminId } });
+
+  // Use createdAt column for today's earnings
+ const todayEarnings = await booking.sum("total", {
+  where: {
+    paymentConfirmed: true,
+    [Op.and]: [
+      where(fn("DATE", col("createdAt")), { [Op.eq]: today_start }),
+    ],
+  },
+});
+  console.log("todayEarnings==============>", todayEarnings);
+
+  const balance = await wallet.sum("amount");
+  console.log("balance==============>", balance);
+
   const paidToDrivers = await wallet.sum("amount", {
     where: {
       description: {
@@ -5476,6 +5497,7 @@ async function homePage(req, res) {
       },
     },
   });
+
   let numOfUsers = userData.filter((ele) => ele.userTypeId === 1).length;
   let numOfDrivers = userData.filter((ele) => ele.userTypeId === 2).length;
   let blockedUsers = userData.filter(
@@ -5484,10 +5506,12 @@ async function homePage(req, res) {
   let blockedDrivers = userData.filter(
     (ele) => ele.userTypeId === 2 && !ele.status
   ).length;
+
   const defaultCurrencyUnit = await appUnits.findOne({
     where: { status: true },
     include: { model: units, as: "currencyUnit", attributes: ["symbol"] },
   });
+
   let outObj = {
     numOfUsers,
     numOfDrivers,
@@ -5497,10 +5521,11 @@ async function homePage(req, res) {
     numOfWarehouses,
     earnings,
     todayEarnings: todayEarnings === null ? "0.00" : todayEarnings,
-    balance: -1 * balance,
+    balance: 1 * balance,
     driverEarnings: -1 * paidToDrivers,
-    currencyUnit: defaultCurrencyUnit.symbol,
+    currencyUnit: defaultCurrencyUnit?.currencyUnit?.symbol || "USD",
   };
+
   return res.json(returnFunction("1", "Dashboard general data", outObj, ""));
 }
 

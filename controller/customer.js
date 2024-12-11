@@ -7918,7 +7918,14 @@ async function stripeWebhook(req, res) {
       bookingStatusId: status.id,
     });
     // Call function to create FedEx shipment and schedule pickup
-    console.log(" Fedex local function Call------------>");
+    console.log(" Fedex local function Call------------>",bookingData.customerId);
+
+    await wallet.create({
+      amount: amount,
+      bookingId: bookingID,
+      userId: bookingData.customerId,
+      description: "User Paid",
+    });
 
     if (bookingData.bookingTypeId == 6) {
       const fedexShipment = await createFedexShipmentLoc(bookingData);
@@ -8016,63 +8023,6 @@ async function stripeWebhook(req, res) {
         return res.json(response);
       }
     }
-    //   else if(bookingData.bookingTypeId ===1 && bookingData.consolidation===true){
-    //     const fedexShipment=await createFedexConsolidationRequest(bookingData)
-    //     console.log("��� ~ retrieveSession ~ fedexShipment:", fedexShipment)
-
-    //     if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
-    //       const extractedShipments = fedexShipment.map((shipment) => {
-    //         const transactionShipment = shipment.output.transactionShipments[0];
-    //         return {
-    //           trackingNumber:
-    //             transactionShipment.pieceResponses[0].trackingNumber,
-    //           label:
-    //             transactionShipment.pieceResponses[0].packageDocuments[0].url,
-    //         };
-    //       });
-
-
-    //     bookingData.logisticCompanyTrackingNum =
-    //         extractedShipments.map((track)=>({
-    //             trackingNumber:track.trackingNumber
-    //         }));
-    //       bookingData.label = extractedShipments.map((shipment)=>({
-    //           label:shipment.label
-    //       }));
-    //       bookingData.bookingStatusId = status.id;
-    //       await bookingData.save();
-
-
-    //         for(let i=0;i<bookingData.packages.length;i++){
-    //           const pkg=bookingData.packages[i];
-    //           await pkg.update({
-    //             logisticCompanyTrackingNum:extractedShipments[i].trackingNumber,
-    //             fedexLabel:extractedShipments[i].label
-    //           })
-    //         }
-
-    //       let outObj = {
-    //         logisticCompanyTrackingNum: extractedShipments.map((track)=>({
-    //             trackingNumber:track.trackingNumber
-    //         })),
-    //         label: extractedShipments.map((shipment)=>({
-    //           label:shipment.label
-    //       })),
-    //         //allShipments: extractedShipments, // Optionally return all extracted shipments
-    //       };
-
-    //       const response = returnFunction(
-    //         "1",
-    //         "Payment successfully Done",
-    //         outObj,
-    //         ""
-    //       );
-    //       return res.json(response);
-
-    //   }
-
-    // }
-
   }
 
 }

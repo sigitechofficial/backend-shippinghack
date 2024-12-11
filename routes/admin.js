@@ -318,7 +318,7 @@ const uploadProfile = multer({
 });
 router.post('/registerprofile',validateToken, uploadProfile.single('profileImage'), checkPermission, asyncMiddleware(adminController.registerStep1))
 // 2. Update Driver Profile
-router.put('/updateDriverProfile',validateToken,checkPermission,asyncMiddleware(adminController.updateDriverProfile))
+router.put('/updateDriverProfile',validateToken,uploadProfile.single('profileImage'),checkPermission,asyncMiddleware(adminController.updateDriverProfile))
 // 3. Update Driver Vehicle
 router.put('/updateDriverVehicle', validateToken,uploadProfile.single('profileImage'),checkPermission,asyncMiddleware(adminController.updateDriverVehicle))
 // Update Driver Status
