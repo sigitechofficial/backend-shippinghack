@@ -122,59 +122,125 @@ const transporter = nodemailer.createTransport({
 /*
  *       1. Login Admin
  */
+// async function signIn(req, res) {
+//   const { email, password, dvToken } = req.body;
+//   // Find the admin data based on email, status, and classifiedAId
+//   const adminData = await warehouse.findOne({
+//     where: { 
+//       email, 
+//       status: true, 
+//       classifiedAId: [1, 2]},
+//       include:[{
+//         model:classifiedAs,
+//       }
+//       ] 
+//   });
+//   console.log("🚀 ~ signIn ~ adminData:", adminData.classifiedA.name)
+//   if (!adminData) {
+//     throw new CustomException("User not found", "Please enter valid data");
+//   }
+//   const match = await bcrypt.compare(password, adminData.password);
+//   if (!match) {
+//     throw new CustomException(
+//       "Bad credentials",
+//       "Please enter correct password to continue"
+//     );
+//   }
+//   // if (!adminData.status) {
+//   //   throw new CustomException('Blocked by', 'Please contact admin to continue');
+//   // }
+//   // Update the dvToken for the admin
+//   await warehouse.update({ dvToken }, { where: { id: adminData.id } });
+//   const accessToken = sign(
+//     { id: adminData.id, email: adminData.email, dvToken: dvToken },
+//     process.env.JWT_ACCESS_SECRET
+//   );
+//   // Add the admin's online clients to the Redis database
+//   redis_Client.hSet(`tsh${adminData.id}`, dvToken, accessToken);
+
+//   const output = {
+//     id: adminData.id,
+//     name: adminData.name,
+//     email: adminData.email,
+//     accessToken,
+//     adminType:adminData.classifiedA.name,
+//     userName:adminData.companyName,
+//   };
+//   // Retrieve feature data where status is true
+//   const featureData = await feature.findAll({
+//     where: { status: true },
+//     attributes: ["id", "title"],
+//   });
+//   // Add the featureData to the output
+//   output.featureData = featureData;
+
+//   return res.json(returnFunction("1", "Login Successful", output, ""));
+// }
+
+
 async function signIn(req, res) {
   const { email, password, dvToken } = req.body;
+
   // Find the admin data based on email, status, and classifiedAId
   const adminData = await warehouse.findOne({
     where: { 
       email, 
       status: true, 
-      classifiedAId: [1, 2]},
-      include:[{
-        model:classifiedAs,
-      }
-      ] 
+      classifiedAId: [1, 2]
+    },
+    include: [{
+      model: classifiedAs,
+    }]
   });
-  console.log("🚀 ~ signIn ~ adminData:", adminData.classifiedA.name)
+
+  console.log("🚀 ~ signIn ~ adminData:", adminData.classifiedA.name);
+
   if (!adminData) {
     throw new CustomException("User not found", "Please enter valid data");
   }
+
   const match = await bcrypt.compare(password, adminData.password);
   if (!match) {
     throw new CustomException(
       "Bad credentials",
-      "Please enter correct password to continue"
+      "Please enter the correct password to continue"
     );
   }
-  // if (!adminData.status) {
-  //   throw new CustomException('Blocked by', 'Please contact admin to continue');
-  // }
-  // Update the dvToken for the admin
+
   await warehouse.update({ dvToken }, { where: { id: adminData.id } });
-  const accessToken = sign(
-    { id: adminData.id, email: adminData.email, dvToken: dvToken },
-    process.env.JWT_ACCESS_SECRET
-  );
+
+  const featureData = await feature.findAll({
+    where: { status: true },
+    attributes: ["id", "title"]
+  });
+
+  const payload = {
+    id: adminData.id,
+    email: adminData.email,
+    dvToken: dvToken,
+    featureData: featureData 
+  };
+
+  
+  const accessToken = sign(payload, process.env.JWT_ACCESS_SECRET);
+
   // Add the admin's online clients to the Redis database
   redis_Client.hSet(`tsh${adminData.id}`, dvToken, accessToken);
 
+  
   const output = {
     id: adminData.id,
     name: adminData.name,
     email: adminData.email,
     accessToken,
-    adminType:adminData.classifiedA.name,
+    adminType: adminData.classifiedA.name,
+    userName:adminData.companyName,
+    featureData: featureData
   };
-  // Retrieve feature data where status is true
-  const featureData = await feature.findAll({
-    where: { status: true },
-    attributes: ["id", "title"],
-  });
-  // Add the featureData to the output
-  output.featureData = featureData;
 
   return res.json(returnFunction("1", "Login Successful", output, ""));
 }
+
 
 // ! Module 2: Customers
 /*

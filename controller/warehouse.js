@@ -5709,6 +5709,9 @@ async function getAllCategory(req, res) {
 
 async function getLogCompaniesForFilter(req, res) {
   const LogCompanies = await logisticCompany.findAll({
+    where:{
+      status: true,
+    },
     attributes: ['id', 'title']
   });
 
