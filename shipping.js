@@ -7,7 +7,8 @@ const error = require('./middleware/error');
 //const { Server } = require("socket.io");
 const server = require('http').createServer(app);
 var bodyParser = require('body-parser')
-
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./swagger');
 
 
 // const io = new Server(server, {
@@ -31,10 +32,13 @@ app.use('/webhooks', bodyParser.raw({ type: 'application/json' }), webhooks);
 
 app.use(cors());
 app.use(express.json());
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Middleware which tells the server the format to send data
 
 app.use(bodyParser.urlencoded({ extended: true }));
+
+
 
 // routes
 app.use('/customer', customerRouter);
