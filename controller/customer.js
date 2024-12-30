@@ -2542,7 +2542,6 @@ async function forgetPasswordRequest(req, res) {
 */
 async function verifyOTPforPassword(req, res) {
   const { otpId, OTP } = req.body;
-  console.log("🚀 ~ verifyOTPforPassword ~ language:", language);
   const otpData = await otpVerification.findByPk(otpId, {
     attributes: ["id", "OTP", "verifiedInForgetCase", "userId"],
   });
