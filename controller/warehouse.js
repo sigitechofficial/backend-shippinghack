@@ -5059,9 +5059,10 @@ async function driverDetailsById(req, res) {
 
 async function updateDriverVehicle(req, res) {
   const { vehicleTypeId, vehicleMake, vehicleModel, vehicleYear, vehicleColor, userId, imgUpdate } = req.body;
+  let imagesArr;
   if (imgUpdate === 'true') {
     if (req.files.length < 1) throw new CustomException('Vehicle Images not uploaded', 'Please upload images');
-    let imagesArr = req.files.map(ele => {
+     imagesArr = req.files.map(ele => {
       let tmpPath = ele.path;
       let imagePath = tmpPath.replace(/\\/g, "/");
       const time = getDateAndTime();
