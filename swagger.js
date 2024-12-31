@@ -63,6 +63,39 @@ const options = {
         "name": "Warehouse"
       },
       {
+        "name": "Warehouse --> Auth"
+      },
+      {
+        "name": "Warehouse --> Booking Management"
+      },
+      {
+        "name": "Warehouse --> Booking Management --> Direct Delivery"
+      },
+      {
+        "name": "Warehouse --> Booking Management --> Never Received"
+      },
+      {
+        "name": "Warehouse --> Address Management"
+      },
+      {
+        "name": "Warehouse --> Profile Management"
+      },
+      {
+        "name": "Warehouse --> Tracking"
+      },
+      {
+        "name": "Warehouse --> Employee"
+      },
+      {
+        "name": "Warehouse --> Roles and Permissions"
+      },
+      {
+        "name": "Warehouse --> Dashboard"
+      },
+      {
+        "name": "Warehouse --> Driver"
+      },
+      {
         "name": "Business"
       },
       {
