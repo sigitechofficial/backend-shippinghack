@@ -57,6 +57,18 @@ const options = {
         "name": "Driver App"
       },
       {
+        "name": "Driver App --> Auth"
+      },
+      {
+        "name": "Driver App --> Home"
+      },
+      {
+        "name": "Driver App --> Delivery Side"
+      },
+      {
+        "name": "Driver App --> Profile"
+      },
+      {
         "name": "Admin"
       },
       {
