@@ -72,6 +72,54 @@ const options = {
         "name": "Admin"
       },
       {
+        "name": "Admin --> Auth"
+      },
+      {
+        "name": "Admin --> Customer"
+      },
+      {
+        "name": "Admin --> Warehouse Management"
+      },
+      {
+        "name": "Admin --> Booking Management"
+      },
+      {
+        "name": "Admin --> Unit Management"
+      },
+      {
+        "name": "Admin --> FAQ's"
+      },
+      {
+        "name": "Admin --> Web Policy"
+      },
+      {
+        "name": "Admin --> Restricted Items"
+      },
+      {
+        "name": "Admin --> Dashboard"
+      },
+      {
+        "name": "Admin --> Logistic Companies"
+      },
+      {
+        "name": "Admin --> Categories"
+      },
+      {
+        "name": "Admin --> Drivers"
+      },
+      {
+        "name": "Admin --> Vehicle Types"
+      },
+      {
+        "name": "Admin --> Charges Management"
+      },
+      {
+        "name": "Admin --> Employees"
+      },
+      {
+        "name": "Admin --> Roles & Permissions"
+      },
+      {
         "name": "Warehouse"
       },
       {
