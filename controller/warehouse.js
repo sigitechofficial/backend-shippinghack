@@ -5978,6 +5978,9 @@ async function warehouseDashboard(req, res) {
 async function warehouselocation(req, res) {
   const { shelfCode, warehouseZoneId } = req.body;
 
+  if(!shelfCode || !warehouseZoneId){
+    throw new CustomException("Shelf Code and Warehouse Zone Id are required")
+  }
 
   const locationCreate = await inWarehouseLocation.create({
     shelfCode,
@@ -5993,6 +5996,10 @@ async function warehouselocation(req, res) {
 //=========================Add,Edit,Delete warehouse Zones========================>
 async function wareHouseZone(req, res) {
   const { zoneName } = req.body
+
+  if(!zoneName){
+    throw new CustomException("Zone Name is required")
+  }
 
   let warehouse = req.user.id
 

@@ -120,6 +120,36 @@ const options = {
         "name": "Admin --> Roles & Permissions"
       },
       {
+        "name": "Admin --> Tracking"
+      },
+      {
+        "name": "Admin --> Push Notification"
+      },
+      {
+        "name": "Admin --> Banners"
+      },
+      {
+        "name": "Admin --> Support"
+      },
+      {
+        "name": "Admin --> Merchant Dashboard"
+      },
+      {
+        "name": "Admin --> Register Merchant"
+      },
+      {
+        "name": "Admin --> Merchant INbound && Outbound Order"
+      },
+      {
+        "name": "Admin --> Merchant --> Products && Categories"
+      },
+      {
+        "name": "Admin --> Merchant --> Service"
+      },
+      {
+        "name": "Admin --> Bussiness User's"
+      },
+      {
         "name": "Warehouse"
       },
       {
@@ -156,7 +186,22 @@ const options = {
         "name": "Warehouse --> Driver"
       },
       {
+        "name": "Warehouse --> Warehouse Location and Merchant Order Management"
+      },
+      {
+        "name": "Warehouse --> Warehouse Location and Merchant Order Management --> Warehouse Inventory"
+      },
+      {
+        "name": "Warehouse --> Warehouse Location and Merchant Order Management --> Warehouse Associates"
+      },
+      {
         "name": "Business"
+      },
+      {
+        "name": "Business --> Auth"
+      },
+      {
+        "name": "Business --> Brain Tree Subscription"
       },
       {
         "name": "Merchant Panel"

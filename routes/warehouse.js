@@ -5520,60 +5520,2032 @@ router.get('/associated-jobs',  asyncMiddleware(userController.allAssociatedJobs
 
 //! Module 12:Warehouse Imventory and Orders:
 //Add locations in Warehouse
+/**
+ * @swagger
+ * /warehouse/addLocation:
+ *   post:
+ *     summary: Add warehouse location
+ *     description: Creates a new location in the warehouse with shelf code and zone
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - shelfCode
+ *               - warehouseZoneId
+ *             properties:
+ *               shelfCode:
+ *                 type: string
+ *                 description: Unique code for the shelf location
+ *                 example: 'SHELF-A1'
+ *               warehouseZoneId:
+ *                 type: integer
+ *                 description: ID of the warehouse zone
+ *                 example: 1
+ *     responses:
+ *       '200':
+ *         description: Successfully added warehouse location
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Location Added in Warehouse'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     shelfCode:
+ *                       type: string
+ *                       example: 'SHELF-A1'
+ *                     warehouseZoneId:
+ *                       type: integer
+ *                       example: 1
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - Insufficient warehouse permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Insufficient warehouse permissions'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.post("/addLocation",validateToken,checkwarehousePermission,asyncMiddleware(userController.warehouselocation));
 //Add Zones in the warehouse
+
+/**
+ * @swagger
+ * /warehouse/addZones:
+ *   post:
+ *     summary: Add warehouse zone
+ *     description: Creates a new zone in the warehouse with zone name
+ *     tags:
+ *       - Warehouse
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - zoneName
+ *             properties:
+ *               zoneName:
+ *                 type: string
+ *                 description: Name of the warehouse zone
+ *                 example: 'Zone A'
+ *     responses:
+ *       '200':
+ *         description: Successfully added warehouse zone
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Warehouse Zone Added'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     zoneName:
+ *                       type: string
+ *                       example: 'Zone A'
+ *                     warehouseId:
+ *                       type: integer
+ *                       example: 123
+ *       '400':
+ *         description: Bad Request - Missing zone name
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   example: 'Zone Name is required'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - Insufficient warehouse permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Insufficient warehouse permissions'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.post("/addZones",validateToken,checkwarehousePermission,asyncMiddleware(userController.wareHouseZone));
 //get Locations in Warehouse
+
+/**
+ * @swagger
+ * /warehouse/getLocations:
+ *   get:
+ *     summary: Get warehouse locations
+ *     description: Retrieves all locations for the authenticated warehouse user including zones and shelf codes
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved warehouse locations
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'All Locations'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       companyName:
+ *                         type: string
+ *                         example: 'Warehouse Corp'
+ *                       warehouseZones:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             zoneName:
+ *                               type: string
+ *                               example: 'Zone A'
+ *                             inWarehouseLocations:
+ *                               type: array
+ *                               items:
+ *                                 type: object
+ *                                 properties:
+ *                                   shelfCode:
+ *                                     type: string
+ *                                     example: 'SHELF-A1'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - Insufficient warehouse permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Insufficient warehouse permissions'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get("/getLocations",validateToken,checkwarehousePermission,asyncMiddleware(userController.getLocations));
 //Get all the Warehouse Orders
+/**
+ * @swagger
+ * /warehouse/getInboundOrderWarehouse:
+ *   get:
+ *     summary: Get warehouse inbound orders
+ *     description: Retrieves all inbound orders for the authenticated warehouse user
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved inbound orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Inbound Orders for Warehouse'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       orderType:
+ *                         type: string
+ *                         example: 'INBOUND'
+ *                       merchantName:
+ *                         type: string
+ *                         example: 'Merchant ABC'
+ *                       merchantReference:
+ *                         type: string
+ *                         example: 'REF123'
+ *                       productId:
+ *                         type: integer
+ *                         example: 100
+ *                       quantity:
+ *                         type: integer
+ *                         example: 50
+ *                       warehouseId:
+ *                         type: integer
+ *                         example: 1
+ *                       merchantorderstatusesId:
+ *                         type: integer
+ *                         example: 1
+ *                       productName:
+ *                         type: string
+ *                         example: 'Product XYZ'
+ *                         nullable: true
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Error in fetching inbound orders'
+ *                 data:
+ *                   type: null
+ */
 router.get("/getInboundOrderWarehouse",validateToken,asyncMiddleware(userController.getInboundOrderWarehouse));
 //Inspect Order
-router.post("/InspectOrder/:inboundOrderId",asyncMiddleware(userController.InspectOrder))
+/**
+ * @swagger
+ * /warehouse/InspectOrder/{inboundOrderId}:
+ *   post:
+ *     summary: Inspect inbound order
+ *     description: Performs inspection on an inbound order and records damaged/fine quantities
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management --> Warehouse Inventory
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: inboundOrderId
+ *         required: true
+ *         description: ID of the inbound order to inspect
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - totalQuantity
+ *               - damagedQuantity
+ *               - fineQuantity
+ *             properties:
+ *               totalQuantity:
+ *                 type: integer
+ *                 description: Total quantity of items received
+ *                 example: 100
+ *               damagedQuantity:
+ *                 type: integer
+ *                 description: Number of damaged items
+ *                 example: 5
+ *               fineQuantity:
+ *                 type: integer
+ *                 description: Number of items in good condition
+ *                 example: 95
+ *     responses:
+ *       '200':
+ *         description: Successfully completed inspection
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Order Inspection Completed'
+ *       '400':
+ *         description: Bad Request - Invalid order status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   example: 'Order is not Available or not in the inTransit Status'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.post("/InspectOrder/:inboundOrderId",validateToken,asyncMiddleware(userController.InspectOrder))
 //Statuses get for the  Conformation of Inbound Order
-router.get("/InboundOrderStatuses",asyncMiddleware(userController.InboundStatuses))
+/**
+ * @swagger
+ * /warehouse/InboundOrderStatuses:
+ *   get:
+ *     summary: Get inbound order statuses
+ *     description: Retrieves list of possible statuses for inbound orders (IDs 2, 3, 8, 10)
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved inbound order statuses
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Statuses for Inbound Order'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 2
+ *                       title:
+ *                         type: string
+ *                         example: 'Status Title'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.get("/InboundOrderStatuses",validateToken,asyncMiddleware(userController.InboundStatuses))
 //Order Received at Warehouse and Set Status
-router.put("/orderWarehouseReached/:inboundOrderId",asyncMiddleware(userController.orderReceived))
+/**
+ * @swagger
+ * /warehouse/orderWarehouseReached/{inboundOrderId}:
+ *   put:
+ *     summary: Update order status when received at warehouse
+ *     description: Updates the status of an inbound order when it reaches the warehouse
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: inboundOrderId
+ *         required: true
+ *         description: ID of the inbound order
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - statusId
+ *             properties:
+ *               statusId:
+ *                 type: integer
+ *                 description: New status ID for the order
+ *                 example: 2
+ *     responses:
+ *       '200':
+ *         description: Successfully updated order status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Order Status Updated and Reached in Warehouse'
+ *       '400':
+ *         description: Bad Request - Order not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   example: 'Inbound Order not found'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.put("/orderWarehouseReached/:inboundOrderId",validateToken,asyncMiddleware(userController.orderReceived))
 //Get the Shelf Codes
-router.get("/getshelfsCode",asyncMiddleware(userController.getshelfsCode))
+
+/**
+ * @swagger
+ * /warehouse/getshelfsCode:
+ *   get:
+ *     summary: Get warehouse shelf codes
+ *     description: Retrieves all shelf codes with their associated warehouse zones
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved shelf codes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Warehouse Shelf with their Zones'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       shelfCode:
+ *                         type: string
+ *                         example: 'SHELF-A1'
+ *                       warehouseZone:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 1
+ *                           zoneName:
+ *                             type: string
+ *                             example: 'Zone A'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.get("/getshelfsCode",validateToken,asyncMiddleware(userController.getshelfsCode))
 //Get Order Statuses putway and Available Set to order
-router.get("/statusesforAvailable",asyncMiddleware(userController.statusesforAvailable));
+
+/**
+ * @swagger
+ * /warehouse/statusesforAvailable:
+ *   get:
+ *     summary: Get available order statuses
+ *     description: Retrieves list of possible statuses after order confirmation (IDs 4 and 5)
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved statuses
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Statuses After Confirmation of Order'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 4
+ *                       title:
+ *                         type: string
+ *                         example: 'Status Title'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.get("/statusesforAvailable",validateToken,asyncMiddleware(userController.statusesforAvailable));
 //To set Order to Putaway State
-router.put("/putawayStatus/:inboundOrderId",asyncMiddleware(userController.markOrderPutaway))
+/**
+ * @swagger
+ * /warehouse/putawayStatus/{inboundOrderId}:
+ *   put:
+ *     summary: Mark order as putaway
+ *     description: Updates inbound order status to putaway state after confirmation
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: inboundOrderId
+ *         required: true
+ *         description: ID of the inbound order
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - statusId
+ *             properties:
+ *               statusId:
+ *                 type: integer
+ *                 description: New status ID for putaway state
+ *                 example: 5
+ *     responses:
+ *       '200':
+ *         description: Successfully updated order to putaway status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Order Status Updated and Order moved to putaway'
+ *       '400':
+ *         description: Bad Request - Invalid order state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   example: 'Order must be confirmed before moving to putaway'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.put("/putawayStatus/:inboundOrderId",validateToken,asyncMiddleware(userController.markOrderPutaway))
 //To set Order to Avavilable State
-router.put("/orderAvailable/:inboundOrderId",asyncMiddleware(userController.orderAvailableState))
+/**
+ * @swagger
+ * /warehouse/orderAvailable/{inboundOrderId}:
+ *   put:
+ *     summary: Update order to available state
+ *     description: Updates inbound order status to available and manages warehouse inventory
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: inboundOrderId
+ *         required: true
+ *         description: ID of the inbound order
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - shelflocationId
+ *             properties:
+ *               shelflocationId:
+ *                 type: integer
+ *                 description: ID of the warehouse shelf location
+ *                 example: 1
+ *     responses:
+ *       '200':
+ *         description: Successfully updated order to available state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Order is in Available State'
+ *       '400':
+ *         description: Bad Request - Invalid order state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   example: 'The Order is Still in Putway State'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.put("/orderAvailable/:inboundOrderId",validateToken,asyncMiddleware(userController.orderAvailableState))
 //Get Outbound Order
-router.get("/getOutboundOrders",asyncMiddleware(userController.getOutboundOrders));
+/**
+ * @swagger
+ * /warehouse/getOutboundOrders:
+ *   get:
+ *     summary: Get outbound orders
+ *     description: Retrieves all outbound orders with their product details
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved outbound orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'All Outbound Orders'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       orderType:
+ *                         type: string
+ *                         example: 'OUTBOUND'
+ *                       merchantReference:
+ *                         type: string
+ *                         example: 'REF123'
+ *                       merchantName:
+ *                         type: string
+ *                         example: 'Merchant ABC'
+ *                       productId:
+ *                         type: integer
+ *                         example: 100
+ *                       quantity:
+ *                         type: integer
+ *                         example: 50
+ *                       warehouseId:
+ *                         type: integer
+ *                         example: 1
+ *                       merchantId:
+ *                         type: integer
+ *                         example: 200
+ *                       merchantorderstatusesId:
+ *                         type: integer
+ *                         example: 1
+ *                       product:
+ *                         type: object
+ *                         properties:
+ *                           productName:
+ *                             type: string
+ *                             example: 'Product XYZ'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.get("/getOutboundOrders",validateToken,asyncMiddleware(userController.getOutboundOrders));
 // Get All Outbound Orders To Assign to the Associate
+/**
+ * @swagger
+ * /warehouse/getOutboundOrdersforAssociate:
+ *   get:
+ *     summary: Get orders assigned to warehouse associate
+ *     description: Retrieves all orders assigned to the authenticated warehouse associate
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved assigned orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Orders Assigned to Associate'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       OrderType:
+ *                         type: string
+ *                         example: 'OUTBOUND'
+ *                       merchantName:
+ *                         type: string
+ *                         example: 'Merchant ABC'
+ *                       merchantReference:
+ *                         type: string
+ *                         example: 'REF123'
+ *                       quantity:
+ *                         type: integer
+ *                         example: 50
+ *                       product:
+ *                         type: object
+ *                         properties:
+ *                           productName:
+ *                             type: string
+ *                             example: 'Product XYZ'
+ *                       receiveingWarehouseShelfCode:
+ *                         type: object
+ *                         properties:
+ *                           shelfCode:
+ *                             type: string
+ *                             example: 'SHELF-A1'
+ *                       currentShelfLocation:
+ *                         type: object
+ *                         properties:
+ *                           shelfCode:
+ *                             type: string
+ *                             example: 'SHELF-B2'
+ *       '400':
+ *         description: Bad Request - No orders found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   example: 'No Order Assigned to this Warehouse Associate'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get("/getOutboundOrdersforAssociate",validateToken,asyncMiddleware(userController.getOrdersAssignedtoAssociate));
 //Assign Order To Associate
-router.post("/assignOrderToAssociate",asyncMiddleware(userController.orderAssignedToAssociates))
+/**
+ * @swagger
+ * /warehouse/assignOrderToAssociate:
+ *   post:
+ *     summary: Assign order to warehouse associate
+ *     description: Assigns an outbound order to a specific warehouse associate
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - outboundOrderId
+ *               - warehouseAssociateId
+ *             properties:
+ *               outboundOrderId:
+ *                 type: integer
+ *                 description: ID of the outbound order to assign
+ *                 example: 1
+ *               warehouseAssociateId:
+ *                 type: integer
+ *                 description: ID of the warehouse associate
+ *                 example: 100
+ *     responses:
+ *       '200':
+ *         description: Successfully assigned order to associate
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Order Assignend to Warehouse Associate'
+ *       '400':
+ *         description: Bad Request - Order not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   example: 'Order Not found'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.post("/assignOrderToAssociate",validateToken,asyncMiddleware(userController.orderAssignedToAssociates))
 
 //===========Inbound, Outbound Orders dashboard============>
+    /**
+ * @swagger
+ * /warehouse/warehouseDashboard:
+ *   get:
+ *     summary: Get warehouse dashboard data
+ *     description: Retrieves dashboard statistics including orders, zones, and shelf information
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved dashboard data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Dashboard'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     pendingInboundOrders:
+ *                       type: array
+ *                       description: Inbound orders with status 1
+ *                       items:
+ *                         type: object
+ *                     pendingOutboundOrders:
+ *                       type: array
+ *                       description: Outbound orders with status 1
+ *                       items:
+ *                         type: object
+ *                     orderOutforDelivery:
+ *                       type: array
+ *                       description: Orders with status 12 (delivery)
+ *                       items:
+ *                         type: object
+ *                     ordersProcessing:
+ *                       type: array
+ *                       description: Orders with status 5 (processing)
+ *                       items:
+ *                         type: object
+ *                     wareHouseZones:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 1
+ *                           zoneName:
+ *                             type: string
+ *                             example: 'Zone A'
+ *                           warehouseId:
+ *                             type: integer
+ *                             example: 100
+ *                     NumberOfShelfinWarehouse:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           companyName:
+ *                             type: string
+ *                             example: 'Warehouse Corp'
+ *                           warehouseZones:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 zoneName:
+ *                                   type: string
+ *                                   example: 'Zone A'
+ *                                 inWarehouseLocations:
+ *                                   type: array
+ *                                   items:
+ *                                     type: object
+ *                                     properties:
+ *                                       shelfCode:
+ *                                         type: string
+ *                                         example: 'SHELF-A1'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get("/warehouseDashboard",validateToken,asyncMiddleware(userController.warehouseDashboard))
 
 
 //=======================Warehouse Inventory======================>
 
+
+    /**
+ * @swagger
+ * /warehouse/warehouseInventory:
+ *   get:
+ *     summary: Get warehouse inventory
+ *     description: Retrieves all products and their quantities in the authenticated warehouse
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management --> Warehouse Inventory
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved warehouse inventory
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Products in Warehouse'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       productName:
+ *                         type: string
+ *                         example: 'Product XYZ'
+ *                       productWarehouseQuantity:
+ *                         type: integer
+ *                         example: 100
+ *                       warehouseZone:
+ *                         type: string
+ *                         example: 'Zone A'
+ *                       warehouseId:
+ *                         type: integer
+ *                         example: 1
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get("/warehouseInventory",validateToken,asyncMiddleware(userController.warehouseInventoryName))
 
 //===============Service Order===================>
 
 // get Service Orders
+/**
+ * @swagger
+ * /warehouse/getServiceOrder:
+ *   get:
+ *     summary: Get warehouse service orders
+ *     description: Retrieves all service orders for the authenticated warehouse
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved service orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'All Service Orders'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       pickupDate:
+ *                         type: string
+ *                         format: date
+ *                         example: '2024-03-20'
+ *                       pickupStartTime:
+ *                         type: string
+ *                         example: '10:00'
+ *                       receiverEmail:
+ *                         type: string
+ *                         format: email
+ *                         example: 'receiver@example.com'
+ *                       receiverPhone:
+ *                         type: string
+ *                         example: '1234567890'
+ *                       receiverName:
+ *                         type: string
+ *                         example: 'John Doe'
+ *                       senderEmail:
+ *                         type: string
+ *                         format: email
+ *                         example: 'sender@example.com'
+ *                       senderPhone:
+ *                         type: string
+ *                         example: '0987654321'
+ *                       senderName:
+ *                         type: string
+ *                         example: 'Jane Smith'
+ *                       total:
+ *                         type: number
+ *                         example: 100.50
+ *                       weight:
+ *                         type: number
+ *                         example: 5.5
+ *                       productName:
+ *                         type: string
+ *                         example: 'Product XYZ'
+ *                       productQuantity:
+ *                         type: integer
+ *                         example: 2
+ *                       pickupAddressType:
+ *                         type: string
+ *                         example: 'residential'
+ *                       pickupAddressId:
+ *                         type: integer
+ *                         example: 1
+ *                       dropoffAddressId:
+ *                         type: integer
+ *                         example: 2
+ *                       bookingTypeId:
+ *                         type: integer
+ *                         example: 1
+ *                       merchantcustomerordersId:
+ *                         type: integer
+ *                         example: 100
+ *                       merchantorderstatusesId:
+ *                         type: integer
+ *                         example: 1
+ *                       customerId:
+ *                         type: integer
+ *                         example: 50
+ *                       receivingWarehouseId:
+ *                         type: integer
+ *                         example: 10
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get("/getServiceOrder",validateToken,asyncMiddleware(userController.getServiceOrder))
 
 //confirm service Order
-router.put("/confirmServiceOrder/:serviceOrderId",asyncMiddleware(userController.confirmServiceOrder))
+/**
+ * @swagger
+ * /warehouse/confirmServiceOrder/{serviceOrderId}:
+ *   put:
+ *     summary: Confirm service order and update inventory
+ *     description: Confirms a service order, updates warehouse inventory, and creates FedEx shipment if applicable
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management
+ *     parameters:
+ *       - in: path
+ *         name: serviceOrderId
+ *         required: true
+ *         description: ID of the service order to confirm
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully confirmed order
+ *         content:
+ *           application/json:
+ *             schema:
+ *               oneOf:
+ *                 - type: object
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       example: '1'
+ *                     message:
+ *                       type: string
+ *                       example: 'Order Confirmed and Ready to Assign Driver to Order'
+ *                     data:
+ *                       type: object
+ *                       example: {}
+ *                 - type: object
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       example: '1'
+ *                     message:
+ *                       type: string
+ *                       example: 'Order Confirmed and Assigned to Fedex Driver to Order'
+ *                     data:
+ *                       type: object
+ *                       properties:
+ *                         logisticCompanyTrackingNum:
+ *                           type: string
+ *                           example: 'FDX123456789'
+ *                         label:
+ *                           type: string
+ *                           description: URL to shipping label
+ *                           example: 'https://fedex.com/labels/123.pdf'
+ *       '404':
+ *         description: Order or inventory not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Order or inventory not found'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.put("/confirmServiceOrder/:serviceOrderId",validateToken,asyncMiddleware(userController.confirmServiceOrder))
 
 
 // ! Warehouse Associates
 
+
+/**
+ * @swagger
+ * /warehouse/getBatchOrders:
+ *   get:
+ *     summary: Get batch outbound orders
+ *     description: Retrieves and groups outbound orders by location for the authenticated warehouse associate
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management --> Warehouse Associates
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved batch orders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'All Outbound Orders with Batch Jobs'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     batchJobs:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           orders:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id:
+ *                                   type: integer
+ *                                   example: 1
+ *                                 orderType:
+ *                                   type: string
+ *                                   example: 'OUTBOUND'
+ *                                 merchantReference:
+ *                                   type: string
+ *                                   example: 'REF123'
+ *                                 merchantName:
+ *                                   type: string
+ *                                   example: 'Merchant ABC'
+ *                                 productId:
+ *                                   type: integer
+ *                                   example: 100
+ *                                 quantity:
+ *                                   type: integer
+ *                                   example: 50
+ *                                 product:
+ *                                   type: object
+ *                                   properties:
+ *                                     productName:
+ *                                       type: string
+ *                                       example: 'Product XYZ'
+ *                                     image:
+ *                                       type: string
+ *                                       example: 'product.jpg'
+ *                                     barCode:
+ *                                       type: string
+ *                                       example: '123456789'
+ *                                 currentShelfLocation:
+ *                                   type: object
+ *                                   properties:
+ *                                     shelfCode:
+ *                                       type: string
+ *                                       example: 'SHELF-A1'
+ *                                     warehouseZone:
+ *                                       type: object
+ *                                       properties:
+ *                                         zoneName:
+ *                                           type: string
+ *                                           example: 'Zone A'
+ *                                 warehouseAssociate:
+ *                                   type: object
+ *                                   properties:
+ *                                     email:
+ *                                       type: string
+ *                                       example: 'associate@warehouse.com'
+ *                                     companyName:
+ *                                       type: string
+ *                                       example: 'Warehouse Corp'
+ *                           zoneId:
+ *                             type: integer
+ *                             example: 1
+ *                           shelfCode:
+ *                             type: string
+ *                             example: 'SHELF-A1'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get("/getBatchOrders",validateToken,asyncMiddleware(userController.getBatchOutboundOrders))
 
-router.post("/associatePickOrder/:outboundOrderId",asyncMiddleware(userController.associatePickedOrder))
 
-router.post("/associatePackingOrder/:outboundOrderId",asyncMiddleware(userController.associatePackingOrder))
+/**
+ * @swagger
+ * /warehouse/associatePickOrder/{outboundOrderId}:
+ *   post:
+ *     summary: Mark order as picked by associate
+ *     description: Updates outbound order status from assigned (6) to picked (9)
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management --> Warehouse Associates
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: outboundOrderId
+ *         required: true
+ *         description: ID of the outbound order to mark as picked
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully marked order as picked
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Job Picked by Associate'
+ *       '400':
+ *         description: Bad Request - Invalid order state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   example: 'Order not found or not in Picking status'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.post("/associatePickOrder/:outboundOrderId",validateToken,asyncMiddleware(userController.associatePickedOrder))
 
-router.post("/associatePackedOrder/:outboundOrderId",asyncMiddleware(userController.OrderPacked))
+
+/**
+ * @swagger
+ * /warehouse/associatePackingOrder/{outboundOrderId}:
+ *   post:
+ *     summary: Start packing an order
+ *     description: Updates outbound order status from picked (9) to packing (7)
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management --> Warehouse Associates
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: outboundOrderId
+ *         required: true
+ *         description: ID of the outbound order to start packing
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully started packing order
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Packing started'
+ *       '400':
+ *         description: Bad Request - Invalid order state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   example: 'Order not found or not ready for packing'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.post("/associatePackingOrder/:outboundOrderId",validateToken,asyncMiddleware(userController.associatePackingOrder))
+
+
+/**
+ * @swagger
+ * /warehouse/associatePackedOrder/{outboundOrderId}:
+ *   post:
+ *     summary: Mark order as packed
+ *     description: Updates outbound order status from packing (7) to packed (11)
+ *     tags:
+ *       - Warehouse --> Warehouse Location and Merchant Order Management --> Warehouse Associates
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *       - in: path
+ *         name: outboundOrderId
+ *         required: true
+ *         description: ID of the outbound order to mark as packed
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully marked order as packed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Order Packed and ready to Assign to Driver'
+ *       '400':
+ *         description: Bad Request - Invalid order state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 title:
+ *                   type: string
+ *                   example: 'Order not found or not in the packing'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.post("/associatePackedOrder/:outboundOrderId",validateToken,asyncMiddleware(userController.OrderPacked))
 
 
 

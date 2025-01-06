@@ -2211,6 +2211,177 @@ router.delete("/deleteZone/:zoneId",validateToken,checkPermission,asyncMiddlewar
 
 //! ______________________________Module creating the order Inbound,Outbound______________________________!//
 
+
+/**
+ * @swagger
+ * /admin/createOrder:
+ *   post:
+ *     summary: Create inbound or outbound merchant order
+ *     description: Creates new merchant orders for products with warehouse transfers and inventory management
+ *     tags:
+ *       - Admin --> Merchant INbound && Outbound Order
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - orderType
+ *               - merchantReference
+ *               - merchantID
+ *               - items
+ *               - warehouseId
+ *             properties:
+ *               orderType:
+ *                 type: string
+ *                 enum: [INBOUND, OUTBOUND]
+ *                 description: Type of order
+ *                 example: 'INBOUND'
+ *               merchantReference:
+ *                 type: string
+ *                 description: Reference number for the order
+ *                 example: 'ORD-123'
+ *               merchantName:
+ *                 type: string
+ *                 description: Name of the merchant (optional, will be fetched from merchantID)
+ *                 example: 'John Doe'
+ *               merchantID:
+ *                 type: integer
+ *                 description: ID of the merchant creating the order
+ *                 example: 1
+ *               items:
+ *                 type: array
+ *                 description: List of products in the order
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     productId:
+ *                       type: integer
+ *                       description: ID of the product
+ *                       example: 1
+ *                     quantity:
+ *                       type: integer
+ *                       description: Quantity of the product
+ *                       example: 5
+ *               warehouseId:
+ *                 type: integer
+ *                 description: ID of the primary warehouse
+ *                 example: 1
+ *               receiveingWarehouse:
+ *                 type: integer
+ *                 description: ID of receiving warehouse (required for OUTBOUND orders with warehouse transfer)
+ *                 example: 2
+ *               receiveingShelfCodeId:
+ *                 type: integer
+ *                 description: Shelf code ID in receiving warehouse (required for OUTBOUND orders)
+ *                 example: 101
+ *     responses:
+ *       '200':
+ *         description: Successfully created order(s)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'INBOUND Order has been created with 2 products'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         example: 1
+ *                       orderType:
+ *                         type: string
+ *                         example: 'INBOUND'
+ *                       merchantReference:
+ *                         type: string
+ *                         example: 'ORD-123'
+ *                       merchantName:
+ *                         type: string
+ *                         example: 'John Doe'
+ *                       merchantId:
+ *                         type: integer
+ *                         example: 1
+ *                       productId:
+ *                         type: integer
+ *                         example: 1
+ *                       quantity:
+ *                         type: integer
+ *                         example: 5
+ *                       warehouseId:
+ *                         type: integer
+ *                         example: 1
+ *                       merchantorderstatusesId:
+ *                         type: integer
+ *                         example: 1
+ *       '400':
+ *         description: Bad Request - Validation errors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Entered Quantity is greater than Product Quantity'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.post("/createOrder",validateToken,checkPermission,asyncMiddleware(adminController.createOrder ))
 
 
@@ -2243,12 +2414,466 @@ const uploadBanner = multer.diskStorage({
 const upload = multer({
     storage: uploadBanner,
 });
+
+/**
+ * @swagger
+ * /admin/addbanner:
+ *   post:
+ *     summary: Add a new banner
+ *     description: Creates a new banner with an image and description
+ *     tags:
+ *       - Admin --> Banners
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - image
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: Banner image file
+ *               description:
+ *                 type: string
+ *                 description: Description of the banner
+ *                 example: 'Special offer banner for summer sale'
+ *     responses:
+ *       '200':
+ *         description: Successfully added banner
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Banner Added'
+ *                 data:
+ *                   type: object
+ *                   example: {}
+ *                 error:
+ *                   type: string
+ *                   example: ''
+ *       '400':
+ *         description: Bad Request - Image not uploaded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Image not uploaded'
+ *                 error:
+ *                   type: string
+ *                   example: 'Please upload image'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.post('/addbanner', validateToken, checkPermission, upload.single('image'), asyncMiddleware(adminController.addBanner))
 //2. Get all banners
+
+/**
+ * @swagger
+ * /admin/getallbanners:
+ *   get:
+ *     summary: Get all active banners
+ *     description: Retrieves a list of all active banners with their details
+ *     tags:
+ *       - Admin --> Banners
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved banners
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'All banners'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         description: Unique identifier for the banner
+ *                         example: 1
+ *                       description:
+ *                         type: string
+ *                         description: Description of the banner
+ *                         example: 'Special offer banner for summer sale'
+ *                       image:
+ *                         type: string
+ *                         description: Path to the banner image
+ *                         example: 'uploads/banners/banner-123.jpg'
+ *                       status:
+ *                         type: boolean
+ *                         description: Status of the banner (always true for active banners)
+ *                         example: true
+ *                 error:
+ *                   type: string
+ *                   example: ''
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get('/getallbanners', validateToken, checkPermission, asyncMiddleware(adminController.getAllBanners));
 //3. Update a banner
+/**
+ * @swagger
+ * /admin/updatebanner:
+ *   put:
+ *     summary: Update an existing banner
+ *     description: Updates a banner's description and optionally its image
+ *     tags:
+ *       - Admin --> Banners
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bannerId
+ *               - description
+ *               - updateImage
+ *             properties:
+ *               bannerId:
+ *                 type: integer
+ *                 description: ID of the banner to update
+ *                 example: 1
+ *               description:
+ *                 type: string
+ *                 description: New description for the banner
+ *                 example: 'Updated summer sale banner'
+ *               updateImage:
+ *                 type: string
+ *                 enum: ['true', 'false']
+ *                 description: Whether to update the banner image
+ *                 example: 'true'
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: New banner image file (required if updateImage is 'true')
+ *     responses:
+ *       '200':
+ *         description: Successfully updated banner
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Banner updated'
+ *                 data:
+ *                   type: object
+ *                   example: {}
+ *                 error:
+ *                   type: string
+ *                   example: ''
+ *       '400':
+ *         description: Bad Request - Missing required fields or image not uploaded when required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Image not uploaded'
+ *                 error:
+ *                   type: string
+ *                   example: 'Please upload image'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '404':
+ *         description: Not Found - Banner ID does not exist
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Banner not found'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.put('/updatebanner', validateToken, checkPermission, upload.single('image'), asyncMiddleware(adminController.updateBanner))
 //4. Change banner status
+/**
+ * @swagger
+ * /admin/bannerstatus:
+ *   put:
+ *     summary: Change banner status
+ *     description: Updates the active/inactive status of a specific banner
+ *     tags:
+ *       - Admin --> Banners
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bannerId
+ *               - status
+ *             properties:
+ *               bannerId:
+ *                 type: integer
+ *                 description: ID of the banner to update
+ *                 example: 1
+ *               status:
+ *                 type: boolean
+ *                 description: New status for the banner (true for active, false for inactive)
+ *                 example: true
+ *     responses:
+ *       '200':
+ *         description: Successfully updated banner status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Banner status changed'
+ *                 data:
+ *                   type: object
+ *                   example: {}
+ *                 error:
+ *                   type: string
+ *                   example: ''
+ *       '400':
+ *         description: Bad Request - Missing or invalid parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Invalid parameters'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '404':
+ *         description: Not Found - Banner ID does not exist
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Banner not found'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.put('/bannerstatus', validateToken, checkPermission, asyncMiddleware(adminController.changeBannerStatus))
 
 // ! Module 7: Categories
@@ -3892,8 +4517,227 @@ router.put('/updateunitstatus', validateToken, checkPermission, asyncMiddleware(
 
 // ! Module 13: Support
 // 2. Get support data
+/**
+ * @swagger
+ * /admin/getsupport:
+ *   get:
+ *     summary: Get support contact details
+ *     description: Retrieves support email and phone number information
+ *     tags:
+ *       - Admin --> Support
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved support details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Support Data'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     email:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 1
+ *                         title:
+ *                           type: string
+ *                           example: 'Support Email'
+ *                         key:
+ *                           type: string
+ *                           example: 'support_email'
+ *                         value:
+ *                           type: string
+ *                           example: 'support@example.com'
+ *                     phone:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 2
+ *                         title:
+ *                           type: string
+ *                           example: 'Support Phone'
+ *                         key:
+ *                           type: string
+ *                           example: 'support_phone'
+ *                         value:
+ *                           type: string
+ *                           example: '+1234567890'
+ *                 error:
+ *                   type: string
+ *                   example: ''
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get('/getsupport', validateToken, checkPermission, asyncMiddleware(adminController.getSupport));
 // 3. Update support
+
+/**
+ * @swagger
+ * /admin/updatesupport:
+ *   put:
+ *     summary: Update support contact information
+ *     description: Updates the value of a specific support contact detail (email or phone)
+ *     tags:
+ *       - Admin --> Support
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - supportId
+ *               - value
+ *             properties:
+ *               supportId:
+ *                 type: integer
+ *                 description: ID of the support detail to update
+ *                 example: 1
+ *               value:
+ *                 type: string
+ *                 description: New value for the support contact (email or phone)
+ *                 example: 'newsupport@example.com'
+ *     responses:
+ *       '200':
+ *         description: Successfully updated support information
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Support Information updated'
+ *                 data:
+ *                   type: object
+ *                   example: {}
+ *                 error:
+ *                   type: string
+ *                   example: ''
+ *       '400':
+ *         description: Bad Request - Missing or invalid parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Invalid parameters'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal Server Error'
+ *                 data:
+ *                   type: object
+ *                   example: {}
+ *                 error:
+ *                   type: string
+ *                   description: Error message details
+ *                   example: 'Database error occurred'
+ */
 router.put('/updatesupport', validateToken, checkPermission, asyncMiddleware(adminController.updateSupport));
 
 // ! Module 14: FAQs
@@ -6976,9 +7820,429 @@ router.post('/createzip', validateToken, checkPermission, asyncMiddleware(adminC
 router.post('/importdbsdata', validateToken, checkPermission, asyncMiddleware(adminController.bulkDBSData));
 
 // ! 26. Push Notifications
+/**
+ * @swagger
+ * /admin/pushnotifications:
+ *   post:
+ *     summary: Send push notifications to users
+ *     description: Send push notifications to all users, only customers, or only drivers based on selection
+ *     tags:
+ *       - Admin --> Push Notification
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - sendTo
+ *               - title
+ *               - body
+ *             properties:
+ *               sendTo:
+ *                 type: string
+ *                 enum: [all, customers, drivers]
+ *                 description: Target audience for the notification
+ *                 example: 'all'
+ *               title:
+ *                 type: string
+ *                 description: Title of the notification
+ *                 example: 'New Feature Available'
+ *               body:
+ *                 type: string
+ *                 description: Content of the notification
+ *                 example: 'Check out our latest update with exciting new features!'
+ *     responses:
+ *       '200':
+ *         description: Successfully sent push notifications
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Push Notifications sent'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       languageCheck:
+ *                         type: string
+ *                         example: 'en'
+ *                       deviceTokens:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             tokenId:
+ *                               type: string
+ *                               example: 'device_token_123'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.post('/pushnotifications', validateToken , checkPermission, asyncMiddleware(adminController.throwNot));
+
+/**
+ * @swagger
+ * /admin/getnotdata:
+ *   get:
+ *     summary: Get all push notifications history
+ *     description: Retrieves a list of all push notifications that have been sent, including their details and timestamps
+ *     tags:
+ *       - Admin --> Push Notification
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved push notifications
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'All Push Notifications'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         description: Unique identifier for the notification
+ *                         example: 1
+ *                       to:
+ *                         type: string
+ *                         description: Target audience of the notification
+ *                         enum: [all, customers, drivers]
+ *                         example: 'all'
+ *                       title:
+ *                         type: string
+ *                         description: Title of the notification
+ *                         example: 'New Feature Available'
+ *                       body:
+ *                         type: string
+ *                         description: Content of the notification
+ *                         example: 'Check out our latest update!'
+ *                       at:
+ *                         type: string
+ *                         description: Formatted date and time when notification was sent
+ *                         example: '03-15-2024 2:30 PM'
+ *                 error:
+ *                   type: string
+ *                   example: ''
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get('/getnotdata', validateToken, checkPermission, asyncMiddleware(adminController.getAllPushNot));
+
+/**
+ * @swagger
+ * /admin/resendnotification:
+ *   post:
+ *     summary: Resend an existing push notification
+ *     description: Resends a previously sent push notification to the same target audience group
+ *     tags:
+ *       - Admin --> Push Notification
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - notId
+ *             properties:
+ *               notId:
+ *                 type: integer
+ *                 description: ID of the notification to resend
+ *                 example: 1
+ *     responses:
+ *       '200':
+ *         description: Successfully resent push notification
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Push Notifications sent'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     to:
+ *                       type: array
+ *                       description: Array of device tokens that received the notification
+ *                       items:
+ *                         type: string
+ *                         example: 'device_token_123'
+ *                 error:
+ *                   type: string
+ *                   example: ''
+ *       '400':
+ *         description: Bad Request - Invalid notification ID
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Notification not found'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+
 router.post('/resendnotification', validateToken , checkPermission, asyncMiddleware(adminController.resendNot));
+
+
+/**
+ * @swagger
+ * /admin/deletenotification:
+ *   put:
+ *     summary: Delete a push notification
+ *     description: Removes a specific push notification from the system using its ID
+ *     tags:
+ *       - Admin --> Push Notification
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - notId
+ *             properties:
+ *               notId:
+ *                 type: integer
+ *                 description: ID of the notification to delete
+ *                 example: 1
+ *     responses:
+ *       '200':
+ *         description: Successfully deleted push notification
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Push Notifications deleted'
+ *                 data:
+ *                   type: object
+ *                   example: {}
+ *                 error:
+ *                   type: string
+ *                   example: ''
+ *       '400':
+ *         description: Bad Request - Invalid notification ID
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Notification not found'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.put('/deletenotification', validateToken, checkPermission, asyncMiddleware(adminController.delNot));
 
 // ! 27. Employees
@@ -9671,8 +10935,394 @@ router.get('/termsconditions', validateToken, checkPermission, asyncMiddleware(a
 
 router.put('/updatetermsconditions', validateToken, checkPermission, asyncMiddleware(adminController.updateTermsConditions));
 
+/**
+ * @swagger
+ * /admin/all-booking-statuses:
+ *   get:
+ *     summary: Get all booking statuses
+ *     description: Retrieves a list of all available booking statuses with their IDs and titles
+ *     tags:
+ *       - Admin --> Tracking
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved booking statuses
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Success'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         description: The unique identifier of the booking status
+ *                         example: 1
+ *                       title:
+ *                         type: string
+ *                         description: The title of the booking status
+ *                         example: 'Pending'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get('/all-booking-statuses',validateToken,asyncMiddleware(userController.allBookingStatus))
+
+/**
+ * @swagger
+ * /admin/update-booking-status:
+ *   put:
+ *     summary: Update booking status
+ *     description: Updates the status of a specific booking
+ *     tags:
+ *       - Admin --> Tracking
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bookingId
+ *               - bookingStatusId
+ *             properties:
+ *               bookingId:
+ *                 type: integer
+ *                 description: ID of the booking to update
+ *                 example: 1
+ *               bookingStatusId:
+ *                 type: integer
+ *                 description: ID of the new booking status
+ *                 example: 2
+ *     responses:
+ *       '200':
+ *         description: Successfully updated booking status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Success'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     updated:
+ *                       type: array
+ *                       description: Number of records updated (0 or 1)
+ *                       example: [1]
+ *       '400':
+ *         description: Bad Request - Invalid input parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Invalid booking ID or status ID'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.put('/update-booking-status',validateToken,asyncMiddleware(userController.updateBookingStatus))
+
+/**
+ * @swagger
+ * /admin/trackorder:
+ *   get:
+ *     summary: Get detailed order tracking information
+ *     description: Retrieves comprehensive details about an order including tracking history, package details, addresses, and status
+ *     tags:
+ *       - Admin --> Tracking
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: id
+ *         schema:
+ *           type: integer
+ *         description: Booking ID (either id or s must be provided)
+ *       - in: query
+ *         name: s
+ *         schema:
+ *           type: string
+ *         description: Tracking ID (either id or s must be provided)
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved order details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Booking Details'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     bookingId:
+ *                       type: integer
+ *                       example: 1
+ *                     trackingId:
+ *                       type: string
+ *                       example: 'TRK123456'
+ *                     consolidation:
+ *                       type: boolean
+ *                       example: false
+ *                     logisticCompanyTrackingNum:
+ *                       type: string
+ *                       example: 'LC123456'
+ *                     total:
+ *                       type: number
+ *                       example: 150.00
+ *                     bookingStatus:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 1
+ *                         title:
+ *                           type: string
+ *                           example: 'In Transit'
+ *                     distance:
+ *                       type: number
+ *                       example: 25.5
+ *                     cancelCharges:
+ *                       type: string
+ *                       example: '37.50'
+ *                     bookingType:
+ *                       type: string
+ *                       example: 'Standard'
+ *                     logisticCompany:
+ *                       type: object
+ *                       properties:
+ *                         title:
+ *                           type: string
+ *                           example: 'Express Logistics'
+ *                         logo:
+ *                           type: string
+ *                           example: '/uploads/logo.png'
+ *                         divisor:
+ *                           type: number
+ *                           example: 5000
+ *                     shipmentType:
+ *                       type: string
+ *                       example: 'Express'
+ *                     pickup:
+ *                       type: object
+ *                       properties:
+ *                         address:
+ *                           type: string
+ *                         lat:
+ *                           type: number
+ *                           example: 25.2048
+ *                         lng:
+ *                           type: number
+ *                           example: 55.2708
+ *                     dropoff:
+ *                       type: object
+ *                       properties:
+ *                         date:
+ *                           type: string
+ *                           example: '2024-03-20'
+ *                         startTime:
+ *                           type: string
+ *                           example: '09:00'
+ *                         endTime:
+ *                           type: string
+ *                           example: '18:00'
+ *                         address:
+ *                           type: string
+ *                         lat:
+ *                           type: number
+ *                         lng:
+ *                           type: number
+ *                     deliveryType:
+ *                       type: object
+ *                       properties:
+ *                         title:
+ *                           type: string
+ *                           example: 'Standard Delivery'
+ *                     packages:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           trackingNum:
+ *                             type: string
+ *                           weight:
+ *                             type: number
+ *                           volume:
+ *                             type: number
+ *                     senderDetails:
+ *                       type: object
+ *                       properties:
+ *                         number:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                         virtualBoxNumber:
+ *                           type: string
+ *                     receiverDetails:
+ *                       type: object
+ *                       properties:
+ *                         number:
+ *                           type: string
+ *                         name:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *                     unit:
+ *                       type: object
+ *                       properties:
+ *                         symbol:
+ *                           type: string
+ *                           example: 'kg'
+ *                     history:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           bookingStatusId:
+ *                             type: integer
+ *                           statusText:
+ *                             type: string
+ *                           description:
+ *                             type: string
+ *                           date:
+ *                             type: string
+ *                           time:
+ *                             type: string
+ *                           status:
+ *                             type: boolean
+ *       '400':
+ *         description: Bad Request - Invalid tracking number or ID
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Wrong tracking Number'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get('/trackorder',validateToken,asyncMiddleware(adminController.orderDetatils))
 // ! Module 10: Restricted Items
 const uploadItem = multer.diskStorage({
@@ -10378,15 +12028,574 @@ router.post('/checkregstep',validateToken, checkPermission , asyncMiddleware(adm
 
 // ! Admin get Bussiness User
 
-router.get("/getBusinessUser",asyncMiddleware(adminController.adminBussinessCheck))
+
+
+/**
+ * @swagger
+ * /admin/getBusinessUser:
+ *   get:
+ *     summary: Get all business users with subscription details
+ *     description: Retrieves business users (userTypeId 3) with their active subscription plans, transaction details, and booking counts
+ *     tags:
+ *       - Admin --> Bussiness User's
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved business users
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                     description: User ID
+ *                     example: 1
+ *                   firstName:
+ *                     type: string
+ *                     description: User's first name
+ *                     example: 'John'
+ *                   lastName:
+ *                     type: string
+ *                     description: User's last name
+ *                     example: 'Doe'
+ *                   businessName:
+ *                     type: string
+ *                     description: Name of the business
+ *                     example: 'Doe Enterprises'
+ *                   userPlan:
+ *                     type: object
+ *                     properties:
+ *                       subscriptionPlanID:
+ *                         type: string
+ *                         description: Braintree subscription plan ID
+ *                         example: 'sub_12345'
+ *                   details:
+ *                     type: object
+ *                     properties:
+ *                       subscriptionId:
+ *                         type: string
+ *                         description: Subscription identifier
+ *                         example: 'sub_12345'
+ *                       subscription_price:
+ *                         type: string
+ *                         description: Subscription price
+ *                         example: '29.99'
+ *                       subscription_status:
+ *                         type: string
+ *                         description: Current status of subscription
+ *                         example: 'Active'
+ *                       subscription_transactionStatus:
+ *                         type: string
+ *                         description: Status of the latest transaction
+ *                         example: 'settled'
+ *                       completedBookings:
+ *                         type: integer
+ *                         description: Number of completed bookings
+ *                         example: 5
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 'Internal Server Error'
+ */
+router.get("/getBusinessUser",validateToken, checkPermission , asyncMiddleware(adminController.adminBussinessCheck))
 
 //! Merchant Admin router
 
-router.get("/merchantDashboard",asyncMiddleware(adminController.merchantDashboard))
+/**
+ * @swagger
+ * /admin/merchantDashboard:
+ *   get:
+ *     summary: Get merchant dashboard statistics
+ *     description: Retrieves overview statistics including merchant count, warehouse count, and order details
+ *     tags:
+ *       - Admin --> Merchant Dashboard
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved dashboard data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Dashboard Data'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalMerchantCount:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           description: Total number of merchants
+ *                           example: 25
+ *                         rows:
+ *                           type: array
+ *                           description: List of merchant users
+ *                           items:
+ *                             type: object
+ *                     totalWarehouses:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           description: Total number of warehouses
+ *                           example: 10
+ *                         rows:
+ *                           type: array
+ *                           description: List of warehouses
+ *                           items:
+ *                             type: object
+ *                     allInboundOrders:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           description: Total number of inbound orders
+ *                           example: 50
+ *                         rows:
+ *                           type: array
+ *                           description: List of inbound orders
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               merchantOrderStatus:
+ *                                 type: object
+ *                                 properties:
+ *                                   title:
+ *                                     type: string
+ *                                     example: 'Pending'
+ *                     allOutboundOrders:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                           description: Total number of outbound orders
+ *                           example: 45
+ *                         rows:
+ *                           type: array
+ *                           description: List of outbound orders
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               merchantOrderStatus:
+ *                                 type: object
+ *                                 properties:
+ *                                   title:
+ *                                     type: string
+ *                                     example: 'Delivered'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.get("/merchantDashboard",validateToken, checkPermission, asyncMiddleware(adminController.merchantDashboard))
 
-router.post("/registerMerchant",uploadProfile.single('profileImage'),asyncMiddleware(adminController.registerMerchant))
+
+/**
+ * @swagger
+ * /admin/registerMerchant:
+ *   post:
+ *     summary: Register a new merchant
+ *     description: Creates a new merchant account with company details and profile image
+ *     tags:
+ *       - Admin --> Register Merchant
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - firstName
+ *               - lastName
+ *               - countryCode
+ *               - phoneNum
+ *               - companyName
+ *               - taxNumber
+ *               - email
+ *               - password
+ *             properties:
+ *               firstName:
+ *                 type: string
+ *                 description: Merchant's first name
+ *                 example: 'John'
+ *               lastName:
+ *                 type: string
+ *                 description: Merchant's last name
+ *                 example: 'Doe'
+ *               countryCode:
+ *                 type: string
+ *                 description: Country code for phone number
+ *                 example: '+1'
+ *               phoneNum:
+ *                 type: string
+ *                 description: Phone number (must be 10 digits)
+ *                 example: '1234567890'
+ *               companyName:
+ *                 type: string
+ *                 description: Name of the merchant's company
+ *                 example: 'ABC Trading Co.'
+ *               taxNumber:
+ *                 type: string
+ *                 description: Company tax identification number
+ *                 example: 'TAX123456'
+ *               dvToken:
+ *                 type: string
+ *                 description: Device token for notifications
+ *                 example: 'device_token_123'
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Merchant's email address
+ *                 example: 'merchant@example.com'
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: Account password
+ *                 example: 'SecurePass123'
+ *               profileImage:
+ *                 type: string
+ *                 format: binary
+ *                 description: Profile image file (optional)
+ *     responses:
+ *       '200':
+ *         description: Successfully registered merchant
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Merchant Register Successfully'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     firstName:
+ *                       type: string
+ *                       example: 'John'
+ *                     lastName:
+ *                       type: string
+ *                       example: 'Doe'
+ *                     email:
+ *                       type: string
+ *                       example: 'merchant@example.com'
+ *                     countryCode:
+ *                       type: string
+ *                       example: '+1'
+ *                     phoneNum:
+ *                       type: string
+ *                       example: '1234567890'
+ *                     virtualBox:
+ *                       type: string
+ *                       example: 'VB123456'
+ *                     companyName:
+ *                       type: string
+ *                       example: 'ABC Trading Co.'
+ *                     taxNumber:
+ *                       type: string
+ *                       example: 'TAX123456'
+ *                     image:
+ *                       type: string
+ *                       example: 'uploads/profiles/image.jpg'
+ *       '400':
+ *         description: Bad Request - Validation errors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Users exists'
+ *                 error:
+ *                   type: string
+ *                   example: 'The email you entered is already taken'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.post("/registerMerchant",validateToken,checkPermission,uploadProfile.single('profileImage'),asyncMiddleware(adminController.registerMerchant))
 
 //! Merchant Product create , Add categories ,Subcategories
+/**
+ * @swagger
+ * /admin/createProductfromCSV:
+ *   post:
+ *     summary: Create multiple products from CSV file
+ *     description: Imports products from a CSV file with corresponding images
+ *     tags:
+ *       - Admin --> Merchant --> Products && Categories
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: CSV file containing product details
+ *     responses:
+ *       '200':
+ *         description: Successfully created products from CSV
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Products Created Successfully'
+ *       '400':
+ *         description: Bad Request - File or data validation errors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'No file uploaded'
+ *                 error:
+ *                   type: string
+ *                   example: 'Image file product123.jpg not found'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Error processing CSV file'
+ * 
+ * components:
+ *   schemas:
+ *     CSVFormat:
+ *       type: object
+ *       description: Expected CSV file format
+ *       properties:
+ *         productName:
+ *           type: string
+ *           example: 'Product 1'
+ *         merchantCategoryName:
+ *           type: string
+ *           example: 'Electronics'
+ *         productDescription:
+ *           type: string
+ *           example: 'Product description here'
+ *         image:
+ *           type: string
+ *           example: 'product1.jpg'
+ *         productCode:
+ *           type: string
+ *           example: 'PROD001'
+ *         price:
+ *           type: number
+ *           example: 99.99
+ *         quantity:
+ *           type: integer
+ *           example: 100
+ *         productWeight:
+ *           type: number
+ *           example: 1.5
+ *         unit:
+ *           type: string
+ *           example: 'kg'
+ *         productStatus:
+ *           type: string
+ *           example: 'active'
+ *         subCategoryName:
+ *           type: string
+ *           example: 'Smartphones'
+ */
 router.post("/createProductfromCSV",uploaded.single('file'),validateToken,checkPermission,asyncMiddleware(adminController.createProductfromCSV));
 
 // for taking products picture of merchant
@@ -10402,25 +12611,1402 @@ const uploadProductPic = multer({
     storage: uploadProductImgs,
 });
 //Add Product
+/**
+ * @swagger
+ * /admin/createProducts:
+ *   post:
+ *     summary: Create a new product
+ *     description: Creates a new product with image upload and automatic barcode generation
+ *     tags:
+ *       - Admin --> Merchant --> Products && Categories
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - productName
+ *               - productDescription
+ *               - price
+ *               - quantity
+ *               - weight
+ *               - productStatus
+ *               - productCode
+ *               - merchantCategoryId
+ *               - merchantSubcategoryId
+ *             properties:
+ *               productName:
+ *                 type: string
+ *                 description: Name of the product
+ *                 example: 'Wireless Headphones'
+ *               productImage:
+ *                 type: string
+ *                 format: binary
+ *                 description: Product image file
+ *               productDescription:
+ *                 type: string
+ *                 description: Detailed description of the product
+ *                 example: 'High-quality wireless headphones with noise cancellation'
+ *               price:
+ *                 type: number
+ *                 description: Product price
+ *                 example: 99.99
+ *               quantity:
+ *                 type: integer
+ *                 description: Available quantity
+ *                 example: 100
+ *               weight:
+ *                 type: number
+ *                 description: Product weight (in lbs)
+ *                 example: 0.5
+ *               productStatus:
+ *                 type: string
+ *                 description: Current status of the product
+ *                 example: 'active'
+ *               productCode:
+ *                 type: string
+ *                 description: Product reference code
+ *                 example: 'PRD001'
+ *               merchantCategoryId:
+ *                 type: integer
+ *                 description: ID of the product category
+ *                 example: 1
+ *               merchantSubcategoryId:
+ *                 type: integer
+ *                 description: ID of the product subcategory
+ *                 example: 1
+ *     responses:
+ *       '200':
+ *         description: Successfully created product
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Products are Created'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     productName:
+ *                       type: string
+ *                       example: 'Wireless Headphones'
+ *                     productDescription:
+ *                       type: string
+ *                       example: 'High-quality wireless headphones with noise cancellation'
+ *                     price:
+ *                       type: number
+ *                       example: 99.99
+ *                     quantity:
+ *                       type: integer
+ *                       example: 100
+ *                     weight:
+ *                       type: number
+ *                       example: 0.5
+ *                     unit:
+ *                       type: string
+ *                       example: 'lbs'
+ *                     image:
+ *                       type: string
+ *                       example: 'Public/products/headphones.jpg'
+ *                     code:
+ *                       type: string
+ *                       example: 'TSH-WirelessHeadphones-123456'
+ *                     barCode:
+ *                       type: string
+ *                       example: 'Public/Barcodes/TSH-WirelessHeadphones-123456.png'
+ *                     merchantCategoryName:
+ *                       type: string
+ *                       example: 'Electronics'
+ *                     subcategoryName:
+ *                       type: string
+ *                       example: 'Audio Devices'
+ *       '400':
+ *         description: Bad Request - Validation errors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Invalid category or subcategory'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.post("/createProducts",uploadProductPic.single('productImage'),validateToken,checkPermission,asyncMiddleware(adminController.createProducts))
 //create categories
+/**
+ * @swagger
+ * /admin/createCategories:
+ *   post:
+ *     summary: Create a new merchant category
+ *     description: Creates a new category for merchant products
+ *     tags:
+ *       - Admin --> Merchant --> Products && Categories
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - status
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Name of the category
+ *                 example: 'Electronics'
+ *               status:
+ *                 type: boolean
+ *                 description: Status of the category (active/inactive)
+ *                 example: true
+ *     responses:
+ *       '200':
+ *         description: Successfully created category
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Categories Added'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     title:
+ *                       type: string
+ *                       example: 'Electronics'
+ *                     status:
+ *                       type: boolean
+ *                       example: true
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: '2024-01-20T10:00:00.000Z'
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: '2024-01-20T10:00:00.000Z'
+ *       '400':
+ *         description: Bad Request - Validation errors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Invalid category data'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.post("/createCategories",validateToken,checkPermission,asyncMiddleware(adminController.createCategories))
 //get categories
-router.get("/getCategories",asyncMiddleware(adminController.getCategories))
+/**
+ * @swagger
+ * /admin/getCategories:
+ *   get:
+ *     summary: Get all merchant categories
+ *     description: Retrieves a list of all merchant categories
+ *     tags:
+ *       - Admin --> Merchant --> Products && Categories
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved categories
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Fetched All Categories'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         description: Unique identifier for the category
+ *                         example: 1
+ *                       title:
+ *                         type: string
+ *                         description: Name of the category
+ *                         example: 'Electronics'
+ *                       status:
+ *                         type: boolean
+ *                         description: Status of the category (active/inactive)
+ *                         example: true
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: '2024-01-20T10:00:00.000Z'
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: '2024-01-20T10:00:00.000Z'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
+router.get("/getCategories",validateToken,checkPermission,asyncMiddleware(adminController.getCategories))
 //create Subcategories
+/**
+ * @swagger
+ * /admin/Subcategories:
+ *   post:
+ *     summary: Create a new merchant subcategory
+ *     description: Creates a new subcategory for merchant products
+ *     tags:
+ *       - Admin --> Merchant --> Products && Categories
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - status
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Name of the subcategory
+ *                 example: 'Smartphones'
+ *               description:
+ *                 type: string
+ *                 description: Description of the subcategory
+ *                 example: 'Mobile phones and accessories'
+ *               status:
+ *                 type: boolean
+ *                 description: Status of the subcategory (active/inactive)
+ *                 example: true
+ *     responses:
+ *       '200':
+ *         description: Successfully created subcategory
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'SubCategory created'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     title:
+ *                       type: string
+ *                       example: 'Smartphones'
+ *                     description:
+ *                       type: string
+ *                       example: 'Mobile phones and accessories'
+ *                     status:
+ *                       type: boolean
+ *                       example: true
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: '2024-01-20T10:00:00.000Z'
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: '2024-01-20T10:00:00.000Z'
+ *       '400':
+ *         description: Bad Request - Validation errors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Invalid subcategory data'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.post("/Subcategories",validateToken,checkPermission,asyncMiddleware(adminController.Subcategories))
 //get subcategories
+
+/**
+ * @swagger
+ * /admin/getSubcategories:
+ *   get:
+ *     summary: Get all merchant subcategories
+ *     description: Retrieves a list of all merchant subcategories
+ *     tags:
+ *       - Admin --> Merchant --> Products && Categories
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved subcategories
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Fetched All Subcategories'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         description: Unique identifier for the subcategory
+ *                         example: 1
+ *                       title:
+ *                         type: string
+ *                         description: Name of the subcategory
+ *                         example: 'Smartphones'
+ *                       description:
+ *                         type: string
+ *                         description: Description of the subcategory
+ *                         example: 'Mobile phones and accessories'
+ *                       status:
+ *                         type: boolean
+ *                         description: Status of the subcategory (active/inactive)
+ *                         example: true
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: '2024-01-20T10:00:00.000Z'
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: '2024-01-20T10:00:00.000Z'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get("/getSubcategories",validateToken,checkPermission,asyncMiddleware(adminController.getSubcategories))
 //create barcodes for Product
+/**
+ * @swagger
+ * /admin/createBarCode:
+ *   post:
+ *     summary: Generate barcodes for multiple products
+ *     description: Creates unique barcodes for specified products and saves them as PNG files
+ *     tags:
+ *       - Admin --> Merchant --> Products && Categories
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - productIds
+ *             properties:
+ *               productIds:
+ *                 type: array
+ *                 description: Array of product IDs to generate barcodes for
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       '200':
+ *         description: Successfully generated barcodes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Product barcodes updated successfully'
+ *                 data:
+ *                   type: object
+ *                   example: {}
+ *       '400':
+ *         description: Bad Request - Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: 'Product IDs array is required and should not be empty'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ * 
+ * components:
+ *   schemas:
+ *     BarcodeFormat:
+ *       type: object
+ *       description: Format of generated barcode data
+ *       properties:
+ *         code:
+ *           type: string
+ *           description: Unique barcode identifier
+ *           example: 'TSH-1-123456'
+ *         barCode:
+ *           type: string
+ *           description: Path to the generated barcode image
+ *           example: 'Public/Barcodes/TSH-1-123456.png'
+ */
 router.post("/createBarCode",validateToken,checkPermission,asyncMiddleware(adminController.createBarCode))
 //edit products
+/**
+ * @swagger
+ * /admin/editProduct:
+ *   put:
+ *     summary: Update product details
+ *     description: Updates an existing product's information and optionally its image
+ *     tags:
+ *       - Admin --> Merchant --> Products && Categories
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - id
+ *               - productName
+ *               - productDescription
+ *               - price
+ *               - quantity
+ *               - weight
+ *               - productStatus
+ *               - productCode
+ *               - productPhotoChange
+ *             properties:
+ *               id:
+ *                 type: integer
+ *                 description: Product ID to update
+ *                 example: 1
+ *               productName:
+ *                 type: string
+ *                 description: Updated name of the product
+ *                 example: 'Updated Wireless Headphones'
+ *               productDescription:
+ *                 type: string
+ *                 description: Updated product description
+ *                 example: 'New improved wireless headphones with better battery life'
+ *               price:
+ *                 type: number
+ *                 description: Updated product price
+ *                 example: 129.99
+ *               quantity:
+ *                 type: integer
+ *                 description: Updated product quantity
+ *                 example: 50
+ *               weight:
+ *                 type: number
+ *                 description: Updated product weight
+ *                 example: 0.45
+ *               productStatus:
+ *                 type: string
+ *                 description: Updated product status
+ *                 example: 'active'
+ *               productCode:
+ *                 type: string
+ *                 description: Updated product code
+ *                 example: 'PRD-001-UPD'
+ *               merchantCategoryId:
+ *                 type: integer
+ *                 description: Updated category ID (Note --> Currently hardcoded to 1)
+ *                 example: 1
+ *               productPhotoChange:
+ *                 type: string
+ *                 enum: ['true', 'false']
+ *                 description: Indicates if product photo should be updated
+ *                 example: 'false'
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *                 description: New product image file (required if productPhotoChange is 'true')
+ *     responses:
+ *       '200':
+ *         description: Successfully updated product
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Product Updated Successfully'
+ *                 data:
+ *                   type: object
+ *                   example: {}
+ *       '400':
+ *         description: Bad Request - Validation errors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Add Product Photo'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '404':
+ *         description: Not Found - Product not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Product not found'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.put("/editProduct",validateToken,checkPermission,asyncMiddleware(adminController.editProduct))
 //get Products
+/**
+ * @swagger
+ * /admin/getProducts:
+ *   get:
+ *     summary: Get all products
+ *     description: Retrieves a list of all products in the system
+ *     tags:
+ *       - Admin --> Merchant --> Products && Categories
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     responses:
+ *       '200':
+ *         description: Successfully retrieved products
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'All Products Fetched'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                         description: Unique identifier for the product
+ *                         example: 1
+ *                       productName:
+ *                         type: string
+ *                         description: Name of the product
+ *                         example: 'Wireless Headphones'
+ *                       productDescription:
+ *                         type: string
+ *                         description: Detailed description of the product
+ *                         example: 'High-quality wireless headphones with noise cancellation'
+ *                       price:
+ *                         type: number
+ *                         description: Product price
+ *                         example: 99.99
+ *                       quantity:
+ *                         type: integer
+ *                         description: Available quantity
+ *                         example: 50
+ *                       weight:
+ *                         type: number
+ *                         description: Product weight
+ *                         example: 0.5
+ *                       unit:
+ *                         type: string
+ *                         description: Unit of measurement
+ *                         example: 'lbs'
+ *                       image:
+ *                         type: string
+ *                         description: Path to product image
+ *                         example: 'Public/products/headphones.jpg'
+ *                       productStatus:
+ *                         type: string
+ *                         description: Current status of the product
+ *                         example: 'active'
+ *                       productCode:
+ *                         type: string
+ *                         description: Unique product code
+ *                         example: 'PRD001'
+ *                       merchantCategoryId:
+ *                         type: integer
+ *                         description: ID of the product category
+ *                         example: 1
+ *                       merchantCategoryName:
+ *                         type: string
+ *                         description: Name of the product category
+ *                         example: 'Electronics'
+ *                       code:
+ *                         type: string
+ *                         description: Barcode identifier
+ *                         example: 'TSH-1-123456'
+ *                       barCode:
+ *                         type: string
+ *                         description: Path to barcode image
+ *                         example: 'Public/Barcodes/TSH-1-123456.png'
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: '2024-01-20T10:00:00.000Z'
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *                         example: '2024-01-20T10:00:00.000Z'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get("/getProducts",validateToken,checkPermission,asyncMiddleware(adminController.getProducts))
 //get categories and subcategories on the basis of Names
+/**
+ * @swagger
+ * /admin/getCatandSubCatName:
+ *   get:
+ *     summary: Find category or subcategory by name
+ *     description: Searches for a matching category or subcategory based on the provided name
+ *     tags:
+ *       - Admin --> Merchant --> Products && Categories
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *       - in: body
+ *         name: categoryData
+ *         required: true
+ *         description: Category name to search
+ *         schema:
+ *           type: object
+ *           required:
+ *             - categoryName
+ *           properties:
+ *             categoryName:
+ *               type: string
+ *               description: Name to search in categories and subcategories
+ *               example: 'Electronics'
+ *     responses:
+ *       '200':
+ *         description: Successfully found category or subcategory
+ *         content:
+ *           application/json:
+ *             schema:
+ *               oneOf:
+ *                 - type: object
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       example: '1'
+ *                     message:
+ *                       type: string
+ *                       example: 'Category find'
+ *                     data:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 1
+ *                         title:
+ *                           type: string
+ *                           example: 'Electronics'
+ *                         status:
+ *                           type: boolean
+ *                           example: true
+ *                         createdAt:
+ *                           type: string
+ *                           format: date-time
+ *                           example: '2024-01-20T10:00:00.000Z'
+ *                         updatedAt:
+ *                           type: string
+ *                           format: date-time
+ *                           example: '2024-01-20T10:00:00.000Z'
+ *                 - type: object
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       example: '1'
+ *                     message:
+ *                       type: string
+ *                       example: 'SubCategory Find'
+ *                     data:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 1
+ *                         title:
+ *                           type: string
+ *                           example: 'Smartphones'
+ *                         description:
+ *                           type: string
+ *                           example: 'Mobile phones and accessories'
+ *                         status:
+ *                           type: boolean
+ *                           example: true
+ *                         createdAt:
+ *                           type: string
+ *                           format: date-time
+ *                           example: '2024-01-20T10:00:00.000Z'
+ *                         updatedAt:
+ *                           type: string
+ *                           format: date-time
+ *                           example: '2024-01-20T10:00:00.000Z'
+ *       '400':
+ *         description: Bad Request - Invalid or missing category name
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Category name is required'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '404':
+ *         description: Not Found - No matching category or subcategory
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'No matching category or subcategory found'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.get("/getCatandSubCatName",validateToken,checkPermission,asyncMiddleware(adminController.getCatandSubCatName))
 //check tracking number
+
+/**
+ * @swagger
+ * /admin/checktrackingNumber/{trackNumber}:
+ *   post:
+ *     summary: Check if tracking number exists
+ *     description: Verifies if a given tracking number exists in the system
+ *     tags:
+ *       - Admin --> Tracking
+ *     parameters:
+ *       - in: path
+ *         name: trackNumber
+ *         required: true
+ *         description: Tracking number to check
+ *         schema:
+ *           type: string
+ *         example: 'TRK123456'
+ *     responses:
+ *       '200':
+ *         description: Successfully checked tracking number
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Found'
+ *                 data:
+ *                   type: boolean
+ *                   example: true
+ *                   description: true if tracking number exists, false if not found
+ *             examples:
+ *               found:
+ *                 value:
+ *                   status: '1'
+ *                   message: 'Found'
+ *                   data: true
+ *               notFound:
+ *                 value:
+ *                   status: '1'
+ *                   message: 'Not found'
+ *                   data: false
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.post("/checktrackingNumber/:trackNumber",asyncMiddleware(adminController.checktrackingNumber))
 //create service for assign to merchant
+
+/**
+ * @swagger
+ * /admin/createService:
+ *   post:
+ *     summary: Create a new merchant service
+ *     description: Creates a new service with title, status, and price
+ *     tags:
+ *       - Admin --> Merchant --> Service
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         description: Authentication token
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - status
+ *               - price
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Name of the service
+ *                 example: 'Express Delivery'
+ *               status:
+ *                 type: boolean
+ *                 description: Status of the service (active/inactive)
+ *                 example: true
+ *               price:
+ *                 type: number
+ *                 description: Price of the service
+ *                 example: 29.99
+ *     responses:
+ *       '200':
+ *         description: Successfully created service
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '1'
+ *                 message:
+ *                   type: string
+ *                   example: 'Service created'
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     title:
+ *                       type: string
+ *                       example: 'Express Delivery'
+ *                     status:
+ *                       type: boolean
+ *                       example: true
+ *                     price:
+ *                       type: number
+ *                       example: 29.99
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: '2024-01-20T10:00:00.000Z'
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: '2024-01-20T10:00:00.000Z'
+ *       '400':
+ *         description: Bad Request - Validation errors
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Invalid service data'
+ *       '401':
+ *         description: Unauthorized - Invalid or missing access token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Unauthorized access'
+ *       '403':
+ *         description: Forbidden - User doesn't have required permissions
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Permission denied'
+ *       '500':
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: '0'
+ *                 message:
+ *                   type: string
+ *                   example: 'Internal server error'
+ */
 router.post("/createService",validateToken,checkPermission,asyncMiddleware(adminController.createService))
 module.exports = router;
