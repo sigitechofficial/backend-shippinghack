@@ -206,6 +206,12 @@ const options = {
       {
         "name": "Merchant Panel"
       },
+      {
+        "name": "Merchant Panel --> Auth"
+      },
+      {
+        "name": "Merchant Panel --> Inventory & Dashboard"
+      }
     ],
   },
   apis: ['./routes/admin.js',

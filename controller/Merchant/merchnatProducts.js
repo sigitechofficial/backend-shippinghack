@@ -326,6 +326,10 @@ async function createProducts(req,res) {
 async function createCategories(req,res){
   const{title,status}=req.body
 
+  if(!title || !status){
+    throw new CustomException('All fields are required')
+  }
+
   const categoriesCreate=await merchantCategories.create({
     title,
     status
@@ -358,6 +362,10 @@ return res.json(returnFunction("1","Fetched All Categories",getCategories))
 */
 async function createSubcategories(req,res) {
   const{title,description,status}=req.body
+
+  if(!title || !description || !status){
+    throw new CustomException('All fields are required')
+  }
 
   const createSubCat=await merchantSubcategories.create({
     title,
@@ -500,11 +508,8 @@ async function createInBoundOrder(req, res) {
   const {
     orderType, 
     merchantReference, 
-    merchantName, 
-    merchantId, 
     items, 
     warehouseId, 
-    logisticCompanyId, 
     receiveingWarehouse,
     receiveingShelfCodeId
   } = req.body;
