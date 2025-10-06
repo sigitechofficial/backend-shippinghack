@@ -8,11 +8,18 @@ const userController = require('../controller/customer');
 const asyncMiddleware = require('../middleware/async');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const validateToken = require('../middleware/validateAdmin'); 
 const checkPermission = require('../middleware/checkPermission');
 const { file } = require('pdfkit');
 const CustomException = require('../middleware/errorObject');
 
+// Helper function to ensure directory exists
+const ensureDirExists = (dirPath) => {
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+    }
+};
 
 /**
  * @swagger
@@ -279,7 +286,9 @@ router.post('/verifyotpsignup', asyncMiddleware(merchantController.verifyOTPforS
 // for taking profile picture of customer
 const uploadProfileImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Profile`)
+        const dirPath = `./Public/Profile`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'profile-' + req?.user?.id + '-' + Date.now() +  path.extname(file.originalname))
@@ -292,7 +301,9 @@ const uploadProfile = multer({
 // for taking products picture of merchant
 const uploadProductImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/productImages`)
+        const dirPath = `./Public/productImages`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'profile-' + '-' + Date.now() +  path.extname(file.originalname))
@@ -306,7 +317,9 @@ const uploadProductPic = multer({
 
 const uploadfiles=multer.diskStorage({
     destination:(req,file,cb)=>{
-        cb(null,'./Public/csvFiles')
+        const dirPath = './Public/csvFiles';
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename:(req,file,cb)=>{
         const fileExtension=path.extname(file.originalname);

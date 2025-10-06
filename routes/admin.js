@@ -5,13 +5,23 @@ const userController = require('../controller/warehouse');
 const asyncMiddleware = require('../middleware/async');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const validateToken = require('../middleware/validateAdmin'); 
 const checkPermission = require('../middleware/checkPermission'); 
+
+// Helper function to ensure directory exists
+const ensureDirExists = (dirPath) => {
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+    }
+};
 
 // CSV file 
 const uploadfiles=multer.diskStorage({
     destination:(req,file,cb)=>{
-        cb(null,'./Public/csvFiles')
+        const dirPath = './Public/csvFiles';
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename:(req,file,cb)=>{
         const fileExtension=path.extname(file.originalname);
@@ -2405,7 +2415,9 @@ router.put('/deleteaddress', validateToken, checkPermission, asyncMiddleware(adm
 //1. Add banners
 const uploadBanner = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Banners`)
+        const dirPath = `./Public/Banners`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'bannerImage-' + Date.now() +  path.extname(file.originalname))
@@ -2879,7 +2891,9 @@ router.put('/bannerstatus', validateToken, checkPermission, asyncMiddleware(admi
 // ! Module 7: Categories
 const uploadCategory = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Categories`)
+        const dirPath = `./Public/Categories`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'Category-' + Date.now() +  path.extname(file.originalname))
@@ -3303,7 +3317,9 @@ router.get('/unittypes', validateToken, checkPermission, asyncMiddleware(adminCo
 // 2. Add sizes
 const uploadSize = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Images/Size`)
+        const dirPath = `./Public/Images/Size`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'sizeImage-' + Date.now() +  path.extname(file.originalname))
@@ -3324,7 +3340,9 @@ router.put('/sizestatus', validateToken, checkPermission, asyncMiddleware(adminC
 // 1. Add sizes
 const uploadStrucType = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Images/StructureTypes`)
+        const dirPath = `./Public/Images/StructureTypes`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'strucIcon-' + Date.now() +  path.extname(file.originalname))
@@ -3345,7 +3363,9 @@ router.put('/structstatus', validateToken, checkPermission, asyncMiddleware(admi
 // 1. Add Vehicles
 const uploadVehicleType = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Images/VehicleTypes`)
+        const dirPath = `./Public/Images/VehicleTypes`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         console.log()
@@ -6368,7 +6388,9 @@ router.put('/deletevolweicharge', validateToken, checkPermission, asyncMiddlewar
 //1.  Register step 1
 const uploadProfileImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Profile`)
+        const dirPath = `./Public/Profile`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'profile-' + Date.now() +  path.extname(file.originalname))
@@ -6983,7 +7005,9 @@ router.get('/getactivevehicles', validateToken, checkPermission, asyncMiddleware
 //5. Register driver step 2
 const uploadVehImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Images/VehicleImages`)
+        const dirPath = `./Public/Images/VehicleImages`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'VehImg-' + req.body.userId + '-'+  Date.now() +  path.extname(file.originalname))
@@ -7217,7 +7241,9 @@ router.get('/activewarehouse',validateToken, checkPermission, asyncMiddleware(ad
 //7.  Register step 3
 const uploadLicImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Images/LicenseImages`)
+        const dirPath = `./Public/Images/LicenseImages`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'LicImg-' + req.body.userId + '-'+  Date.now() +  path.extname(file.originalname))
@@ -9514,7 +9540,9 @@ router.put('/updatestatusrole', validateToken, checkPermission, asyncMiddleware(
 //*_________________________________________________________________________________________
 const uploadLogo = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Logos`)
+        const dirPath = `./Public/Logos`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'companyLogo-' + Date.now() +  path.extname(file.originalname))
@@ -11327,7 +11355,9 @@ router.get('/trackorder',validateToken,asyncMiddleware(adminController.orderDeta
 // ! Module 10: Restricted Items
 const uploadItem = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/RestrictedItems`)
+        const dirPath = `./Public/RestrictedItems`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'restricteditem-' + Date.now() +  path.extname(file.originalname))
@@ -12601,7 +12631,9 @@ router.post("/createProductfromCSV",uploaded.single('file'),validateToken,checkP
 // for taking products picture of merchant
 const uploadProductImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/productImages`)
+        const dirPath = `./Public/productImages`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'profile-' + '-' + Date.now() +  path.extname(file.originalname))

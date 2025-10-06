@@ -7,8 +7,17 @@ const asyncMiddleware = require('../middleware/async');
 const validateToken = require('../middleware/validateToken');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const Stripe = require('../controller/stripe')
 const driverController = require('../controller/driver');
+
+// Helper function to ensure directory exists
+const ensureDirExists = (dirPath) => {
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+    }
+};
+
 // ! Module 1: Authentication 
 //1. Send OTP for registration
 /**
@@ -270,7 +279,9 @@ router.post('/verifyotpsignup', asyncMiddleware(userController.verifyOTPforSignU
 // for taking profile picture of customer
 const uploadProfileImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Profile`)
+        const dirPath = `./Public/Profile`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'profile-' + req?.user?.id + '-' + Date.now() +  path.extname(file.originalname))

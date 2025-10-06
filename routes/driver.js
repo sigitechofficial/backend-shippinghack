@@ -5,6 +5,14 @@ const asyncMiddleware = require('../middleware/async');
 const validateToken = require('../middleware/validateToken');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+
+// Helper function to ensure directory exists
+const ensureDirExists = (dirPath) => {
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+    }
+};
 
 // ! _________________________________________________________________________
 // ! Module 1: Auth
@@ -12,7 +20,9 @@ const path = require('path');
 // 1. Register (Basic Info)
 const uploadProfileImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Profile`)
+        const dirPath = `./Public/Profile`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'profile-' + Date.now() +  path.extname(file.originalname))
@@ -173,7 +183,9 @@ router.get('/allvehicletypes', asyncMiddleware(driverController.getActiveVehicle
 // 4. Register (Vehicle Data)
 const uploadVehImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/VehicleImages`)
+        const dirPath = `./Public/VehicleImages`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'VehImg-' + req.body.userId + '-'+  Date.now() +  path.extname(file.originalname))
@@ -389,7 +401,9 @@ router.post('/uploadVehImages', validateToken, uploadVeh.array('vehImages', 10),
 //5. Register (License Info)
 const uploadLicImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/LicenseImages`)
+        const dirPath = `./Public/LicenseImages`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'LicImg-' + req.body.userId + '-'+  Date.now() +  path.extname(file.originalname))
@@ -2571,7 +2585,9 @@ router.post('/reachedDelivery', validateToken, asyncMiddleware(driverController.
 //7. Delivered Delivery
 const uploadSignature = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/SignatureImages`)
+        const dirPath = `./Public/SignatureImages`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'SigImg-'+  Date.now() +  path.extname(file.originalname))
