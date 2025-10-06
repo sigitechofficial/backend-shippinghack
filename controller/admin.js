@@ -88,7 +88,7 @@ const sendNotification = require("../helper/throwNotification");
 const throwNotification=require('../helper/throwNotification')
 const adminNotification=require('../helper/adminNotifications')
 //const stripe = require('stripe')(process.env.STRIPE_KEY);
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
 // Calling mailer
 const nodemailer = require("nodemailer");

@@ -68,7 +68,7 @@ const { sign } = require("jsonwebtoken");
 const otpGenerator = require("otp-generator");
 //const sendNotification = require('../helper/throwNotification');
 //const stripe = require('stripe')(process.env.STRIPE_KEY);
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const { Op, where, or } = require("sequelize");
 // Calling mailer
 const nodemailer = require("nodemailer");

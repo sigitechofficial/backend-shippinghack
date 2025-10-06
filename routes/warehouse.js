@@ -6,6 +6,14 @@ const validateToken = require('../middleware/validateAdmin');
 const checkwarehousePermission=require('../middleware/checkwarehousePermission')
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+
+// Helper function to ensure directory exists
+const ensureDirExists = (dirPath) => {
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+    }
+};
 
 // ! Module 1: Authentication 
 
@@ -3288,7 +3296,9 @@ router.post('/consolidateMeasurement',validateToken,checkwarehousePermission,asy
 //1.  Register step 1
 const uploadProfileImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Images/Profile`)
+        const dirPath = `./Public/Images/Profile`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'profile-' + Date.now() +  path.extname(file.originalname))
@@ -3406,7 +3416,9 @@ router.get('/getactivevehicles', validateToken, asyncMiddleware(userController.g
 //3. Register driver step 2
 const uploadVehImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Images/VehicleImages`)
+        const dirPath = `./Public/Images/VehicleImages`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath)
     },
     filename: (req, file, cb) => {
         cb(null, 'VehImg-' + req.body.userId + '-'+  Date.now() +  path.extname(file.originalname))
@@ -3526,7 +3538,9 @@ router.post('/registerstep2', validateToken, uploadVeh.array('vehImages', 10), a
 //1.  Register step 3
 const uploadLicImgs = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, `./Public/Images/LicenseImages`);
+        const dirPath = `./Public/Images/LicenseImages`;
+        ensureDirExists(dirPath);
+        cb(null, dirPath);
     },
     filename: (req, file, cb) => {
         cb(null, 'LicImg-' + req.body.userId + '-'+  Date.now() +  path.extname(file.originalname));
