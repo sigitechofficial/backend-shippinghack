@@ -331,13 +331,10 @@ async function verifyOTPforSignUp(req, res) {
   const { otpId, OTP, userId } = req.body;
 
   if (OTP == "1234") {
-    const userData = await user.findByPk(userId);
-    const custeomer = await Stripe.addCustomer(
-      userData.firstName,
-      userData.email
-    );
+    // Sign-up never waits on Stripe: the Stripe customer is created the first
+    // time the user needs payments (ensureStripeCustomerId in customer.js).
     const u = await user.update(
-      { verifiedAt: new Date(), stripeCustomerId: custeomer },
+      { verifiedAt: new Date() },
       { where: { id: userId } }
     );
     return res.json(returnFunction("1", "OTP verified", { userId }, ""));
@@ -355,13 +352,10 @@ async function verifyOTPforSignUp(req, res) {
         "You entered incorrect OTP",
         "Please enter correct OTP to continue"
       );
-    const userData = await user.findByPk(userId);
-    const custeomer = await Stripe.addCustomer(
-      userData.firstName,
-      userData.email
-    );
+    // Sign-up never waits on Stripe: the Stripe customer is created the first
+    // time the user needs payments (ensureStripeCustomerId in customer.js).
     const u = await user.update(
-      { verifiedAt: new Date(), stripeCustomerId: custeomer },
+      { verifiedAt: new Date() },
       { where: { id: userId } }
     );
     return res.json(returnFunction("1", "OTP verified", { userId }, ""));
@@ -532,15 +526,16 @@ async function signInUser(req, res) {
   });
   console.log("UserData--------------->",userData)
   // if user not found and signedBy (google or apple) then create new account
-  if ((!userData && signedBy === "google") || signedBy === "apple") {
-    const customer = await Stripe.addCustomer(email);
-
+  // only a *new* social user gets an account (the old condition also matched
+  // existing Apple users and tried to create a duplicate)
+  if (!userData && (signedBy === "google" || signedBy === "apple")) {
+    // Create the account first; the Stripe customer is created the first
+    // time the user needs payments.
     const userData = await user.create({
       email,
       userTypeId: 1,
       signedFrom: signedBy,
       verifiedAt: new Date(),
-      stripeCustomerId: customer,
       // Add other necessary fields for social sign-up
     });
     const userId = userData.id;

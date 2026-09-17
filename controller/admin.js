@@ -3344,13 +3344,14 @@ async function getAllbookings(req, res) {
   let bookingData = await booking.findAll({
     where: {
       [Op.and]: [
+        // no status filter: booking.status=false only marks a completed order
+        // (delivered / handed over), and admins must still see those
         req.query.bookingType
           ? {
-              status: true,
               [Op.not]: [{ appUnitId: null }],
               bookingTypeId: req.query.bookingType,
             }
-          : { status: true, [Op.not]: [{ appUnitId: null }] },
+          : { [Op.not]: [{ appUnitId: null }] },
       ],
     },
     include: [
@@ -4008,10 +4009,12 @@ async function orderDetatils(req, res) {
       "ðŸš€ ~ file: warehouse.js:869 ~ bookingDetailsById ~ error:",
       error
     );
+    // report the failure as a failure, not as an empty successful booking
     return res.json({
-      status: "1",
-      message: error.message,
-      error: "",
+      status: "0",
+      message: "Could not load booking details",
+      data: {},
+      error: error.message,
     });
   }
 }
@@ -5788,7 +5791,7 @@ console.log("Request --------------------> ",req.body)
     taxNumber
   });
   
-  return res.json(returnFunction("1","Merchant Register Sucessfully",newUser));
+  return res.json(returnFunction("1","Merchant Register Successfully",newUser));
     
 }
 
@@ -5878,7 +5881,7 @@ console.log("Request --------------------> ",req.body)
     })
 
 
-    return res.json(returnFunction("1","Zone Deleted Sucessfully",deleteZone))
+    return res.json(returnFunction("1","Zone Deleted Successfully",deleteZone))
     
   }
 
@@ -5952,7 +5955,7 @@ async function createProductfromCSV(req,res) {
   })
   .on('end',()=>{
       // fs.unlinkSync(filePath);
-      return res.json(returnFunction("1","Products Created Sucessfully"));
+      return res.json(returnFunction("1","Products Created Successfully"));
   })
   .on('error', (error) => {
     console.error('Error processing CSV file:', error);
@@ -6197,7 +6200,7 @@ async function editProduct(req,res) {
   })
 
 
-  return res.json(returnFunction("1","Product Updated Sucessfully"));
+  return res.json(returnFunction("1","Product Updated Successfully"));
 
   
 }

@@ -106,12 +106,17 @@ INSERT INTO `generalCharges` VALUES (1, 'charge', 'WtoVW', 50006, '  Weight to v
 (6, 'Driver Percentage', 'driver', 70, '  Service charges', '2023-11-16 14:51:49', '2024-09-20 08:26:05');
 
 
-INSERT INTO `logisticCompanies` VALUES (1, 'FedEx', 'Charge per weight tr54', 1, 3.75, 2.5, 'Public/Logos/companyLogo-1697715590221.png', 0, '2023-09-22 10:26:42', '2024-02-22 11:33:02', 139),
-(2, 'DHL', 'Charge per weight', 1, 10, 29.95, 'Public/Logos/companyLogo-1697715612210.png', 0, '2023-10-04 11:08:21', '2023-10-19 12:23:44', 166),
+-- Column names are listed explicitly: without them the values are matched by column
+-- position, and the table's order (…flashCharges, divisor, standardCharges…) differs
+-- from this dump's order, which silently loads divisor/charges into the wrong columns.
+-- divisor = dimensional weight divisor for inches/lbs (139 = standard international).
+INSERT INTO `logisticCompanies` (`id`, `title`, `description`, `status`, `flashCharges`, `standardCharges`, `logo`, `deleted`, `createdAt`, `updatedAt`, `divisor`) VALUES
+(1, 'FedEx', 'Charge per weight tr54', 1, 3.75, 2.5, 'Public/Logos/companyLogo-1697715590221.png', 0, '2023-09-22 10:26:42', '2024-02-22 11:33:02', 139),
+(2, 'DHL', 'Charge per weight', 1, 10, 29.95, 'Public/Logos/companyLogo-1697715612210.png', 0, '2023-10-04 11:08:21', '2023-10-19 12:23:44', 139),
 (3, 'UPS', 'Charge per weight', 1, 54, 4, 'Public/Logos/companyLogo-1726722602896.png', 0, '2023-10-04 11:49:51', '2024-09-19 05:12:36', 139),
 (4, 'Leopards', 'Charge per weight', 1, 48, 12, 'Public/Logos/companyLogo-1726722735989.jfif', 0, '2023-10-04 12:53:17', '2024-09-19 05:12:15', 139),
 (5, 'TCS', 'Charge per weight', 1, 50, 10, 'Public/Logos/companyLogo-1697715943526.png', 0, '2023-10-04 12:54:26', '2023-10-19 12:24:03', 139),
-(9, 'test', 'testing', 0, 15, 12, 'Public/Logos/companyLogo-1726817219558.jpg', 0, '2024-09-20 07:26:59', '2024-09-20 07:27:04', 2);
+(9, 'test', 'testing', 0, 15, 12, 'Public/Logos/companyLogo-1726817219558.jpg', 0, '2024-09-20 07:26:59', '2024-09-20 07:27:04', 139);
 
 
 

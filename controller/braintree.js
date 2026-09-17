@@ -9,6 +9,7 @@ const gateway = new braintree.BraintreeGateway({
 });
 
 const CustomException = require("../middleware/errorObject");
+const { providerError } = require("../utils/providerErrors");
 const error = require('../middleware/error');
 
 // Create Braintree Plan
@@ -36,7 +37,7 @@ async function createBraintreePlan(planData,billingFrequency,price) {
         }
     } catch (error) {
         console.error('Error creating plan:', error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
     }
 }
 
@@ -65,7 +66,7 @@ async function btplanUpdate(planId,planUpdate){
     } catch (error) {
 
         console.log('Erro in updating The Plan: ',error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
         
     }
 }
@@ -90,7 +91,7 @@ async function planBYId(planId){
     } catch (error) {
 
         console.error("Error in fetching the Plan",error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
         
     }
 
@@ -115,7 +116,7 @@ async function fetchallPlans(){
         
     } catch (error) {
         console.error('Error fetching all plans:', error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
         
     }
 
@@ -140,7 +141,7 @@ async function createCustomer(customerId,customerDetails) {
             return result.customer; // Return the token of the stored card
         }
     } catch (error) {
-        throw new CustomException(error.message)
+        throw providerError(error, "braintree");
     }
 }
 
@@ -173,7 +174,7 @@ async function customerAllCard(customerId){
         
     } catch (error) {
         console.error('Error fetching all payment methods:', error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
         
     }
 }
@@ -208,7 +209,7 @@ async function addCard(customerId,cardDetails){
         
     } catch (error) {
         console.error('Error storing card:', error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
     }
 
 }
@@ -261,7 +262,7 @@ async function PaymentMethodRevoked(cardToken){
         
     } catch (error) {
         console.error('Error revoking payment method:', error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
         
     }
 }
@@ -288,7 +289,7 @@ async function createSubscription(planId,billingFrequency,paymentMethodToken) {
         }
     } catch (error) {
         console.error('Error creating subscription:', error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
     }
 }
 
@@ -309,7 +310,7 @@ async function cancelSubscription(subscriptionId) {
         
     } catch (error) {
         console.error('Error cancelling subscription:', error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
     }
 }
 
@@ -371,7 +372,7 @@ async function retryPayment(subscriptionId){
         
     } catch (error) {
         console.error('Error retrying payment:', error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
         
     }
 }
@@ -399,7 +400,7 @@ async function deleteCustomer(customerId) {
         
     } catch (error) {
         console.error('Error deleting customer:', error);
-        //throw new CustomException(error.message);
+        //throw providerError(error, "braintree");
         
     }
     
@@ -431,7 +432,7 @@ async function getSubscriptionDetails(subscriptionId) {
         return { subscription, transactions };
     } catch (error) {
         console.error('Error retrieving subscription details:', error);
-        throw new CustomException(error.message);
+        throw providerError(error, "braintree");
     }
 }
 

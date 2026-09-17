@@ -292,14 +292,14 @@ async function notficationsTesting(req, res) {
 async function registerWarehouse(req, res) {
   const { email, password } = req.body;
   if (email === null || password === null) {
-    throw CustomException("Empty", "Email or Password not Entered");
+    throw new CustomException("Empty", "Email or Password not Entered");
   }
   classifiedAs = 3; // Warehouse
   const entity = await warehouse.findOne({
     where: { email, classifiedAId: classifiedAs },
   }); //TODO deleted - missing in dB
   if (entity) {
-    throw CustomException(
+    throw new CustomException(
       "Already Exist",
       "Email already Exist try Another Eamil"
     );
@@ -347,7 +347,7 @@ async function provideInfo(req, res) {
     },
   });
   if (entity) {
-    throw CustomException(
+    throw new CustomException(
       "Already Exist",
       "You have already saved this Address"
     );
@@ -468,7 +468,7 @@ async function sendOTP(req, res) {
   });
   //   console.log("CHECK WAHRE HOUSE OBJECT",warehouseExist);
   if (!warehouseExist) {
-    throw CustomException(
+    throw new CustomException(
       "Not Found",
       "User with the following email does not exist."
     );
@@ -545,10 +545,10 @@ async function verifyOTP(req, res) {
   });
   const DT = Date.now();
   if (!otpExist) {
-    throw CustomException("Not Found", "WORNG OTP");
+    throw new CustomException("Not Found", "WORNG OTP");
   }
   if (otpExist.expiryAt < DT) {
-    throw CustomException("Expired", "OTP is Expired");
+    throw new CustomException("Expired", "OTP is Expired");
   }
 
   await otpVerification.update(
@@ -576,7 +576,7 @@ async function resetPassword(req, res) {
     where: { warehouseId: id, verifiedInForgetCase: 0 },
   });
   if (otpExist) {
-    throw CustomException("OTP Not Verified", "Verify your OTP First!");
+    throw new CustomException("OTP Not Verified", "Verify your OTP First!");
   }
   const hashedPassword = await bcrypt.hash(password, 10);
   await warehouse.update({ password: hashedPassword }, { where: { id: id } });
@@ -594,9 +594,11 @@ async function profileData(req, res) {
   const warehouseData = await warehouse.findByPk(warehouseId, {
     include: {
       model: addressDBS,
-      attributes: ["postalCode", "secondPostalCode", "lat", "lng"],
+      // addressDBs has no secondPostalCode column; asking for it made this endpoint fail
+      attributes: ["streetAddress", "city", "province", "country", "postalCode", "lat", "lng"],
     },
-    attributes: ["id", "name", "email", "countryCode", "phoneNum"],
+    // the column is companyName, not name: asking for "name" made this endpoint fail
+    attributes: ["id", "companyName", "companyEmail", "email", "countryCode", "phoneNum"],
   });
   return res.json(returnFunction("1", "Warehouse data", warehouseData, ""));
 }
@@ -736,7 +738,7 @@ async function getAllbookings(req, res) {
       include: { model: booking, as: 'customer', attributes: ['id'] }
     });
     if (!customer) {
-      throw CustomException(
+      throw new CustomException(
         "Customer Not Found",
         "Invalid Virtual Box Number"
       );
@@ -1307,10 +1309,13 @@ async function bookingDetailsById(req, res) {
       "Ã°Å¸Å¡â‚¬ ~ file: warehouse.js:869 ~ bookingDetailsById ~ error:",
       error
     );
+    // report the failure as a failure; returning status "1" here made the
+    // tracking/details pages show an empty "successful" booking
     return res.json({
-      status: "1",
-      message: error.message,
-      error: "",
+      status: "0",
+      message: "Could not load booking details",
+      data: {},
+      error: error.message,
     });
   }
 }
@@ -1628,10 +1633,13 @@ async function bookingDetailsCancelled(req, res) {
       "Ã°Å¸Å¡â‚¬ ~ file: warehouse.js:869 ~ bookingDetailsById ~ error:",
       error
     );
+    // report the failure as a failure; returning status "1" here made the
+    // tracking/details pages show an empty "successful" booking
     return res.json({
-      status: "1",
-      message: error.message,
-      error: "",
+      status: "0",
+      message: "Could not load booking details",
+      data: {},
+      error: error.message,
     });
   }
 }
@@ -2707,7 +2715,7 @@ async function getWarehouseDrivers(req, res) {
     "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/.json"
   );
   //   console.log('FROM FIRE BASE',onlineDrivers.data)
-  //if(onlineDrivers.statusCode != 200) throw CustomException('Error getting driver data', onlineDrivers.statusMessage)
+  //if(onlineDrivers.statusCode != 200) throw new CustomException('Error getting driver data', onlineDrivers.statusMessage)
   if (!onlineDrivers.data)
     return res.json(
       returnFunction(
@@ -2923,8 +2931,8 @@ async function handedOver(req, res) {
         sendNotification(to, notification);
       }
     }
-    // also throw notification to driver
-    if (bookingData.receivingDriver.deviceToken) {
+    // also throw notification to driver (the booking may have no linked driver)
+    if (bookingData.receivingDriver?.deviceToken) {
       let recDriver = bookingData.receivingDriver.deviceToken.map((ele) => {
         return ele.tokenId;
       });
@@ -3026,7 +3034,8 @@ async function selfPickupDelivered(req, res) {
   if (bookingData) {
     const time = getDateAndTime();
     bookingData.bookingStatusId = 21;
-    bookingData.dropOffDate = time.currentDate;
+    // model field is `dropoffDate` (DATEONLY); `dropOffDate` was silently ignored
+    bookingData.dropoffDate = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD, local time
     // bookingData.dropoffStartTime= time.currentTimecurrentDate;
     bookingData.dropoffEndTime = time.currentTime;
     // bookingData.deliveredAt= time.currentTimecurrentDate;
@@ -3142,7 +3151,7 @@ async function addAddress(req, res) {
     },
   });
   if (entity) {
-    throw CustomException(
+    throw new CustomException(
       "Already Exist",
       "You have already saved this Address"
     );
@@ -3220,7 +3229,7 @@ async function getAddressById(req, res) {
     ],
   });
   // if (!companyAddress) {
-  //     throw CustomException('No Address Found', 'Incorrect id for the address');
+  //     throw new CustomException('No Address Found', 'Incorrect id for the address');
   // }
   return res.json(returnFunction("1", "Success", companyAddress, ""));
 }
@@ -3259,14 +3268,14 @@ async function updateAddress(req, res) {
     },
   });
   if (entity) {
-    throw CustomException(
+    throw new CustomException(
       "Already Exist",
       "You have already saved this Address"
     );
   }
   const companyAddress = await addressDBS.update(data, { where: { id } });
   if (companyAddress[0] == 0) {
-    throw CustomException("Not Updated", "Something went Wrong");
+    throw new CustomException("Not Updated", "Something went Wrong");
   }
   return res.json(returnFunction("1", "Address Updated", companyAddress, ""));
 }
@@ -3721,7 +3730,7 @@ async function packageArrived(req, res) {
 
   if (pack)
     return res.json(
-      returnFunction("1", "Package Status updated succssfully", {}, "")
+      returnFunction("1", "Package Status updated successfully", {}, "")
     );
   return res.json(
     returnFunction("0", "Internal server error (404)", {}, "Package Not found!")
@@ -4197,7 +4206,7 @@ async function createRemeasurement(req, res) {
     return res.json(
       returnFunction(
         "1",
-        "Package remesurements are updated succssfully",
+        "Package remeasurements are updated successfully",
         {},
         ""
       )
@@ -4299,7 +4308,7 @@ async function consolidationRemesurements(req, res) {
 
 
   return res.json(
-    returnFunction("1", "Booking remesurements are updated succssfully", {}, "")
+    returnFunction("1", "Booking remeasurements are updated successfully", {}, "")
   );
 }
 
@@ -4646,7 +4655,7 @@ async function registerStep1(req, res) {
   // }
   // Chcking if profile photo is missing
   if (!req.file)
-    throw CustomException(
+    throw new CustomException(
       "Profile Image missing",
       "Please chose drivers image"
     );
@@ -4868,7 +4877,7 @@ async function updateDriverLicense(req, res) {
   const { userId, licIssueDate, licExpiryDate, imageUpdated } = req.body;
   let msg = ''
   if (imageUpdated === "true") {
-    if (req.files.length === 0) throw CustomException('Images Not Uploaded', '')
+    if (req.files.length === 0) throw new CustomException('Images Not Uploaded', '')
     let tmpLicFrontImage = req.files.frontImage[0].path;
     let licFrontImage = tmpLicFrontImage.replace(/\\/g, "/");
     let tmpLicBackImage = req.files.backImage[0].path;
@@ -5474,7 +5483,7 @@ async function bookingDetailsByTracking(req, res) {
     ],
   });
   if (!bookingData)
-    throw CustomException(
+    throw new CustomException(
       "The information you are trying to get is unavailable",
       "Please enter correct tracking number"
     );
@@ -5663,10 +5672,11 @@ async function homePage(req, res) {
       bookingStatusId: 20,
     }
   })
+  // same statuses as the panel's Pending payments list (8 = measured/labeled, 9 = pending payment)
   const pendingPayements = await booking.count({
     where: {
       [Op.or]: [{ receivingWarehouseId: warehouseId }, { deliveryWarehouseId: warehouseId, }],
-      bookingStatusId: 9,
+      bookingStatusId: { [Op.in]: [8, 9] },
     }
   })
   const cancelled = await booking.count({
@@ -5726,8 +5736,8 @@ async function toDirectDelivery(req, res) {
   await booking.update({ bookingStatusId: 14 }, { where: { id: bookingsIds } });
   const dt = Date.now();
   const DT = new Date(dt);
-  const currentDate = `${DT.getMonth() +
-    1}-${DT.getDate()}-${DT.getFullYear()}`;
+  // YYYY-MM-DD (same as the other history writers); M-D-YYYY triggered moment deprecation warnings
+  const currentDate = `${DT.getFullYear()}-${("0" + (DT.getMonth() + 1)).slice(-2)}-${("0" + DT.getDate()).slice(-2)}`;
   const currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
   const data = bookingsIds.map(bookingId => ({
     date: currentDate,
@@ -5778,19 +5788,24 @@ async function toDirectDelivery(req, res) {
 
   // check if customer is null then reciever will recieve email 
 
-  return res.json(returnFunction("1", "Sucesss", {}, ""));
+  return res.json(returnFunction("1", "Success", {}, ""));
 }
 
 async function markDeliver(req, res) {
   const bookingId = req.body.bookingId;
 
-  await booking.update({ bookingStatusId: 18 }, { where: { id: bookingId } });
   const dt = Date.now();
   const DT = new Date(dt);
-  const currentDate = `${DT.getMonth() +
-    1}-${DT.getDate()}-${DT.getFullYear()}`;
+  // YYYY-MM-DD (same as the other history writers); M-D-YYYY triggered moment deprecation warnings
+  const currentDate = `${DT.getFullYear()}-${("0" + (DT.getMonth() + 1)).slice(-2)}-${("0" + DT.getDate()).slice(-2)}`;
   const currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
 
+
+  // completed: same fields as selfPickupDelivered (status=false = completed booking, still listed in myOrders)
+  await booking.update(
+    { bookingStatusId: 18, dropoffDate: currentDate, dropoffEndTime: currentTime, status: false },
+    { where: { id: bookingId } }
+  );
 
   await bookingHistory.create({
     date: currentDate,
@@ -5839,7 +5854,7 @@ async function markDeliver(req, res) {
   deliveredMail(to, name, bookingData.trackingId, arrived.length, bookingData.logisticCompany.title, consolidation, totalWeight.chargedWeight, bookingData.total, bookingData.dropoffAddress)
 
 
-  return res.json(returnFunction("1", "Sucesss", {}, ""));
+  return res.json(returnFunction("1", "Success", {}, ""));
 }
 
 //for tracking purpose only
@@ -6035,7 +6050,7 @@ async function deleteZOne(req, res) {
   })
 
 
-  return res.json(returnFunction("1", "Zone Deleted Sucessfully", deleteZone))
+  return res.json(returnFunction("1", "Zone Deleted Successfully", deleteZone))
 
 }
 

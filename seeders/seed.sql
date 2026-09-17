@@ -578,7 +578,8 @@ INSERT INTO
         `logo`,
         `deleted`,
         `createdAt`,
-        `updatedAt`
+        `updatedAt`,
+        `divisor`
     )
 VALUES
     (
@@ -590,7 +591,9 @@ VALUES
         '',
         '0',
         '2023-09-22 10:26:42',
-        '2023-09-22 10:26:42'
+        '2023-09-22 10:26:42',
+        -- dimensional weight divisor for inches/lbs (139 = standard international)
+        '139'
     );
 
 INSERT INTO

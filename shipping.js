@@ -10,6 +10,13 @@ var bodyParser = require('body-parser')
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./swagger');
 
+// Node 15+ exits on an unhandled promise rejection. Some fire-and-forget work
+// (e.g. barcode rendering after an order is created) can reject outside any
+// request's try/catch; log it instead of taking the whole API down.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+});
+
 
 // const io = new Server(server, {
 //   cors: {

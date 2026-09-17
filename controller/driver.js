@@ -75,6 +75,18 @@ const nodemailer = require("nodemailer");
 const sequelize = require("sequelize");
 const sendNotification = require("../helper/throwNotification");
 const { default: axios } = require("axios");
+// Safe wrapper for the driver-presence Firebase RTDB reads. The RTDB can be
+// deactivated (returns HTTP 423) or unreachable; that is an optional presence
+// signal and must never break registration/login/dashboard. Returns {data:null}
+// on any failure so all `.data`-guarded callers degrade gracefully to "offline".
+async function safeFirebaseGet(url) {
+  try {
+    return await axios.get(url);
+  } catch (e) {
+    console.log("Firebase RTDB presence read unavailable:", e.message);
+    return { data: null };
+  }
+}
 const {
   registerUserEmail,
   accountCreated,
@@ -566,12 +578,12 @@ async function registerStep3(req, res) {
   );
   //Adding the online clients to reddis DB for validation process
   redis_Client.hSet(`tsh${userData.id}`, dvToken, accessToken);
-  const requ = await axios.get(
+  let online_status = false;
+  const requ = await safeFirebaseGet(
     "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
       `${userData.id}` +
       ".json"
   );
-  let online_status = false;
   if (requ.data != null) {
     online_status = true;
   }
@@ -695,7 +707,7 @@ async function login(req, res) {
       "Please contact admin to continue"
     );
   // Checking user status
-  const requ = await axios.get(
+  const requ = await safeFirebaseGet(
     "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
       `${userData.id}` +
       ".json"
@@ -1016,7 +1028,7 @@ async function session(req, res) {
     );
   //const accessToken = sign({id: userData.id, email: userData.email, dvToken: "dvToken" }, process.env.JWT_ACCESS_SECRET);
   const accessToken = req.header("accessToken");
-  const requ = await axios.get(
+  const requ = await safeFirebaseGet(
     "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
       `${userData.id}` +
       ".json"
@@ -1283,7 +1295,7 @@ async function allAssociatedJobs(req, res) {
     //!modified
     //Picked deliveries
     pickuped = await bookingData.filter((ele) => ele.bookingStatusId == 16);
-    let driverLocation = await axios.get(
+    let driverLocation = await safeFirebaseGet(
       "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
         `${driverId}` +
         ".json"
@@ -1665,7 +1677,7 @@ async function bookingDetailsById(req, res) {
   }
 
   if (driver_id != null) {
-    requ = await axios.get(
+    requ = await safeFirebaseGet(
       "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
         `${driver_id}` +
         ".json"
@@ -1682,7 +1694,7 @@ async function bookingDetailsById(req, res) {
       console.log(driver_distance);
     }
   } else {
-    requ = await axios.get(
+    requ = await safeFirebaseGet(
       "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
         `${req.user.id}` +
         ".json"
@@ -1983,7 +1995,7 @@ async function groupDetailDelivery(req, res) {
   } else {
     // Creating a sequence using algorithm
     //getting drivers live location
-    const driverData = await axios.get(
+    const driverData = await safeFirebaseGet(
       "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
         `${driverId}` +
         ".json"
@@ -2759,7 +2771,7 @@ let loginDataForLogin = (userData, accessToken, online_status, dvToken) => {
 };
 let filterBookings = async (bookingData, driverId) => {
   let jobs = [];
-  let driverLocation = await axios.get(
+  let driverLocation = await safeFirebaseGet(
     "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
       `${driverId}` +
       ".json"
@@ -2823,7 +2835,7 @@ let filterBookingsOnCapacity = async (
   driverId
 ) => {
   let jobs = [];
-  let driverLocation = await axios.get(
+  let driverLocation = await safeFirebaseGet(
     "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
       `${driverId}` +
       ".json"

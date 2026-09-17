@@ -2,6 +2,7 @@ const { STRIPE_PUBLISHABLE_KEY, STRIPE_SECRET_KEY } = process.env;
 const stripe = require("stripe")(STRIPE_SECRET_KEY);
 const CustomException = require("../middleware/errorObject");
 const { returnFunction } = require("../utils/helperFuncCompany");
+const { providerError } = require("../utils/providerErrors");
 const endpointSecret = "whsec_febTITVhHXIIyjFfuVvCuFMR70zCi3qV";
 
 //! Customers
@@ -9,13 +10,20 @@ const endpointSecret = "whsec_febTITVhHXIIyjFfuVvCuFMR70zCi3qV";
  *  1:  Create Customer ________________________
  */
 
-async function addCustomer(name, email) {
+// userId (optional) makes creation safe to retry: Stripe returns the same
+// customer for the same idempotency key, and metadata.userId links the two.
+async function addCustomer(name, email, userId) {
   try {
-    const customer = await stripe.customers.create({ name, email });
+    const params = { name, email };
+    const options = {};
+    if (userId) {
+      params.metadata = { userId: String(userId) };
+      options.idempotencyKey = `create-customer-user-${userId}`;
+    }
+    const customer = await stripe.customers.create(params, options);
     return customer.id;
   } catch (error) {
-    console.error(error);
-    throw new CustomException(error.message, error.code);
+    throw providerError(error, "stripe");
   }
 }
 
@@ -52,7 +60,7 @@ async function addCard(
 
     return attachToCustomer.id;
   } catch (error) {
-    throw new CustomException(error.message, error.code);
+    throw providerError(error, "stripe");
   }
 }
 
@@ -72,7 +80,7 @@ async function cards(customerId) {
     );
     return paymentMethods;
   } catch (error) {
-    throw new CustomException(error.message, error.code);
+    throw providerError(error, "stripe");
   }
 }
 /*
@@ -84,7 +92,7 @@ async function cardDetach(paymentMethodId) {
     const paymentMethod = await stripe.paymentMethods.detach(paymentMethodId);
     return paymentMethod;
   } catch (error) {
-    throw new CustomException(error.message, error.code);
+    throw providerError(error, "stripe");
   }
 }
 
@@ -109,7 +117,7 @@ async function createPaymentIntend(amount, customerId, paymentMethodId) {
     );
     return {intentId:confirmIntent.id, status: confirmIntent.status,clientInformation: confirmIntent.client_secret };
   } catch (error) {
-    throw new CustomException(error.message, error.code);
+    throw providerError(error, "stripe");
   }
 }
 
@@ -121,7 +129,7 @@ async function paymenIntend(paymentIntentId) {
     const paymentIntent = await stripe.paymentMethods.retrieve(paymentIntentId);
     return paymentIntent;
   } catch (error) {
-    throw new CustomException(error.message, error.code);
+    throw providerError(error, "stripe");
   }
 }
 
@@ -135,7 +143,7 @@ async function confirmIntend(paymentIntentId, paymentMethodId) {
     });
     return confirmIntent;
   } catch (error) {
-    throw new CustomException(error.message, error.code);
+    throw providerError(error, "stripe");
   }
 }
 
@@ -225,7 +233,7 @@ async function finalizePayment(total, paymentIntentId) {
       };
     }
   } catch (error) {
-    throw new CustomException(error.message, error.code);
+    throw providerError(error, "stripe");
   }
 }
 
@@ -565,7 +573,7 @@ async function checkoutSessions(amount, userId, bookingType,bookingId,successUrl
     return session;
     
   } catch (error) {
-    throw new CustomException(`${error.message}`);
+    throw providerError(error, "stripe");
   }
 }
 
@@ -580,7 +588,7 @@ async function retrieveCheckoutSession(sessionId) {
   return checkoutSession.payment_status
     
   } catch (error) {
-    throw new CustomException(`${error.message}`)
+    throw providerError(error, "stripe");
     
   }
   
@@ -602,7 +610,7 @@ async function retriveIntent(intentId) {
     return intent;
   } catch (error) {
     console.error('Error retrieving PaymentIntent:', error.message);
-    throw new CustomException(`${error.message}`)
+    throw providerError(error, "stripe");
   }
 }
 

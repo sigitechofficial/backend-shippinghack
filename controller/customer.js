@@ -1626,13 +1626,10 @@ async function verifyOTPforSignUp(req, res) {
   const { otpId, OTP, userId } = req.body;
 
   if (OTP == "1234") {
-    const userData = await user.findByPk(userId);
-    const custeomer = await Stripe.addCustomer(
-      userData.firstName,
-      userData.email
-    );
+    // Sign-up never waits on Stripe: the Stripe customer is created the first
+    // time the user needs payments (see ensureStripeCustomerId).
     const u = await user.update(
-      { verifiedAt: new Date(), stripeCustomerId: custeomer },
+      { verifiedAt: new Date() },
       { where: { id: userId } }
     );
     return res.json(returnFunction("1", "OTP verified", { userId }, ""));
@@ -1652,13 +1649,10 @@ async function verifyOTPforSignUp(req, res) {
       );
     }
 
-    const userData = await user.findByPk(userId);
-    const custeomer = await Stripe.addCustomer(
-      userData.firstName,
-      userData.email
-    );
+    // Sign-up never waits on Stripe: the Stripe customer is created the first
+    // time the user needs payments (see ensureStripeCustomerId).
     const u = await user.update(
-      { verifiedAt: new Date(), stripeCustomerId: custeomer },
+      { verifiedAt: new Date() },
       { where: { id: userId } }
     );
     return res.json(returnFunction("1", "OTP verified", { userId }, ""));
@@ -1936,6 +1930,8 @@ async function registerUser(req, res, next) {
   );
   userExist.dataValues.firstName = firstName;
   userExist.dataValues.lastName = lastName;
+  userExist.dataValues.countryCode = countryCode;
+  userExist.dataValues.phoneNum = phoneNum;
 
   let output = loginData(userExist, accessToken, false);
 
@@ -2070,6 +2066,8 @@ async function registerUserMobile(req, res, next) {
   );
   userExist.dataValues.firstName = firstName;
   userExist.dataValues.lastName = lastName;
+  userExist.dataValues.countryCode = countryCode;
+  userExist.dataValues.phoneNum = phoneNum;
 
   let output = registerData(userExist, accessToken, false);
 
@@ -2096,6 +2094,30 @@ async function generateUniqueVirtualBoxNumber() {
   }
 
   return virtualBoxNumber;
+}
+
+// Return the user's Stripe customer id, creating and saving it if missing
+async function ensureStripeCustomerId(userData) {
+  if (userData.stripeCustomerId) return userData.stripeCustomerId;
+  // callers sometimes load only a few columns; make sure name/email are present
+  let details = userData;
+  if (!details.email) {
+    details = await user.findByPk(userData.id, {
+      attributes: ["id", "firstName", "lastName", "email"],
+    });
+  }
+  const fullName = [details.firstName, details.lastName].filter(Boolean).join(" ");
+  const customerId = await Stripe.addCustomer(
+    fullName || details.email,
+    details.email,
+    userData.id
+  );
+  await user.update(
+    { stripeCustomerId: customerId },
+    { where: { id: userData.id } }
+  );
+  userData.stripeCustomerId = customerId;
+  return customerId;
 }
 
 /*
@@ -2135,14 +2157,13 @@ async function signInUser(req, res) {
     (!userData && signedBy === "apple") ||
     (!userData && signedBy === "facebook")
   ) {
-    const customer = await Stripe.addCustomer(email);
-
+    // Create the account first; the Stripe customer is created the first
+    // time the user needs payments (see ensureStripeCustomerId).
     const userData = await user.create({
       email,
       userTypeId: 1,
       signedFrom: signedBy,
       verifiedAt: new Date(),
-      stripeCustomerId: customer,
       // Add other necessary fields for social sign-up
     });
     const userId = userData.id;
@@ -2930,14 +2951,15 @@ async function calculateWeights(packages, divisor) {
     let billableWeight = 0;
 
     weight += package.actualWeight;
-    testWeight = package.actualVolume / divisor;
+    const testWeight = package.actualVolume / divisor;
     dimensionalWeight += testWeight;
 
-    if (package.actualWeight > testWeight) {
-      billableWeight = package.actualWeight;
-    } else if (testWeight > package.actualWeight) {
-      billableWeight = Math.round(package.actualVolume / divisor);
-    }
+    // billable = larger of actual and dimensional weight (equal values used to give 0).
+    // As before, only the dimensional weight is rounded; actual weight is billed as measured
+    // (rounding it would bill a 6.4 lb parcel as 6 lb).
+    const actual = Number(package.actualWeight) || 0;
+    const dim = testWeight || 0;
+    billableWeight = actual >= dim ? actual : Math.round(dim) || dim;
 
     chargedWeight += billableWeight;
     console.log("🚀 ~ calculateWeights ~ chargedWeight:", chargedWeight)
@@ -2961,11 +2983,11 @@ async function calculateWeight(packages, divisor) {
     weight += parseFloat(package.weight);
     dimensionalWeight += package.volume / divisor;
 
-    if (package.weight > package.volume / divisor) {
-      billableWeight = package.weight;
-    } else if (package.volume / divisor > package.weight) {
-      billableWeight = Math.round(package.volume / divisor);
-    }
+    // billable = larger of actual and dimensional weight (equal values used to give NaN/0).
+    // Only the dimensional weight is rounded; actual weight is billed as entered.
+    const actual = parseFloat(package.weight) || 0;
+    const dim = package.volume / divisor || 0;
+    billableWeight = actual >= dim ? actual : Math.round(dim) || dim;
 
     chargedWeight += parseFloat(billableWeight);
   }
@@ -3123,7 +3145,7 @@ async function createOrderInt(req, res) {
         userId: userId,
         subscriptionStatus: "Active",
       },
-      attributes: ["subscriptionPlanID"],
+      attributes: ["subscriptionPlanID", "shipLimit"],
     });
 
     if (!subscriptionId) {
@@ -3131,7 +3153,18 @@ async function createOrderInt(req, res) {
         "Currently, you don't have a subscription. As a business user, please purchase a subscription to continue creating orders.If you wish to switch to a normal user, please go to your profile and update your status."
       );
     }
-    await checkBookingLimit(userId);
+    // Enforce the plan's monthly shipment limit
+    const bookingCount = await checkBookingLimit(userId);
+    const shipLimit = parseInt(subscriptionId.shipLimit, 10);
+    if (
+      typeof bookingCount === "number" &&
+      shipLimit > 0 &&
+      bookingCount >= shipLimit
+    ) {
+      throw new CustomException(
+        "You have reached your monthly shipment limit for your plan"
+      );
+    }
   }
   const [userData, receivingWarehouse, appUnitData, weightThreshold] =
     await Promise.all([
@@ -3223,15 +3256,7 @@ async function createOrderInt(req, res) {
     specialChars: false,
   });
   trackingId = `TSH-${bookingData.id}-${trackingId}`;
-  // Creating barcode
-  JsBarcode(svgNode, trackingId, {
-    xmlDocument: document,
-  });
-  const svgText = xmlSerializer.serializeToString(svgNode);
-  svg2img(svgText, function (error, buffer) {
-    //returns a Buffer
-    fs.writeFileSync(`Public/Barcodes/${trackingId}.png`, buffer);
-  });
+  // E2E-B13: save the tracking ID right away (no placeholder window)
   await booking.update(
     {
       trackingId,
@@ -3239,6 +3264,34 @@ async function createOrderInt(req, res) {
     },
     { where: { id: bookingData.id } }
   );
+  // Creating barcode
+  JsBarcode(svgNode, trackingId, {
+    xmlDocument: document,
+  });
+  const svgText = xmlSerializer.serializeToString(svgNode);
+  // svg2img renders synchronously for SVG strings: defer it so it does not
+  // hold up this request, and never let a render error crash the process
+  setImmediate(() => {
+    try {
+      svg2img(svgText, function (error, buffer) {
+        //returns a Buffer
+        if (error || !buffer) {
+          console.error("Barcode render failed:", trackingId, error?.message);
+          return;
+        }
+        // svg2img invokes this from inside an async function: a synchronous
+        // throw here (e.g. writeFileSync ENOENT/ENOSPC) would become an
+        // unhandled rejection and crash Node 20, so write asynchronously
+        fs.writeFile(`Public/Barcodes/${trackingId}.png`, buffer, (writeError) => {
+          if (writeError) {
+            console.error("Barcode save failed:", trackingId, writeError.message);
+          }
+        });
+      });
+    } catch (error) {
+      console.error("Barcode render failed:", trackingId, error?.message);
+    }
+  });
   // creating Booking History
   let dt = Date.now();
   let DT = new Date(dt);
@@ -3292,7 +3345,7 @@ async function createOrderInt(req, res) {
     returnFunction(
       "1",
       "Your Package has been added sucessfully",
-      { Order: bookingData.id },
+      { Order: bookingData.id, trackingId },
       ""
     )
   );
@@ -3610,6 +3663,7 @@ async function createOrderLoc(req, res) {
   //     shipmentTypeCharge, packingCharge, serviceCharge, gstCharge, bookingId: bookingData.id});
   let outObj = {
     bookingId: bookingData.id,
+    trackingId,
     total: charge,
     senderData: {
       senderName: bookingData.senderName,
@@ -3743,6 +3797,7 @@ async function expectedPackages(req, res) {
 
     attributes: [
       "id",
+      "trackingId", // cards show the same order number as the detail view
       [
         sequelize.literal(
           'DATE_FORMAT(booking.createdAt, "%d-%m-%y %h:%i:%s %p")'
@@ -3798,6 +3853,7 @@ async function packagesInWarehouse(req, res) {
     ],
     attributes: [
       "id",
+      "trackingId", // cards show the same order number as the detail view
       [
         sequelize.literal(
           'DATE_FORMAT(booking.createdAt, "%d-%m-%y %h:%i:%s %p")'
@@ -3820,9 +3876,9 @@ async function sentPackages(req, res) {
   const bookingData = await booking.findAll({
     where: {
       customerId: userId,
+      // 11-18 = in transit ... delivered; 20/21 = self pickup (awaiting / handed over). 19 (cancelled) excluded.
       bookingStatusId: {
-        [Op.lte]: 18,
-        [Op.gte]: 11, // Less than or equal to
+        [Op.in]: [11, 12, 13, 14, 15, 16, 17, 18, 20, 21],
       },
       bookingTypeId: {
         [Op.not]: 6,
@@ -3839,6 +3895,7 @@ async function sentPackages(req, res) {
     ],
     attributes: [
       "id",
+      "trackingId", // cards show the same order number as the detail view
       [
         sequelize.literal(
           'DATE_FORMAT(booking.createdAt, "%d-%m-%y %h:%i:%s %p")'
@@ -4514,7 +4571,8 @@ async function myOrders(req, res) {
   const [internationalOrders, localOrders] = await Promise.all([
     booking.findAll({
       // TODO add payment:true
-      where: { status: true, bookingTypeId: 1, customerId: userId },
+      // no `status` filter: status=false marks a completed booking (selfPickupDelivered / markDeliver / driver delivery), which must stay in Order History
+      where: { bookingTypeId: 1, customerId: userId },
       attributes: [
         "id",
         "trackingId",
@@ -4560,7 +4618,8 @@ async function myOrders(req, res) {
     }),
     booking.findAll({
       // TODO add payment:true
-      where: { status: true, bookingTypeId: 6, customerId: userId },
+      // no `status` filter: status=false marks a completed booking (selfPickupDelivered / markDeliver / driver delivery), which must stay in Order History
+      where: { bookingTypeId: 6, customerId: userId },
       attributes: ["id", "trackingId", "total", "createdAt"],
       include: [
         {
@@ -4645,7 +4704,9 @@ async function chooseLogisticCompany(req, res) {
       );
     }
     const subscriptionPlanID = subscriptionId.dataValues.subscriptionPlanID;
-    const discountAmount = await discountget(subscriptionPlanID);
+    // E2E-B14: the local plan row is Active here, so a Braintree outage
+    // falls back to discount 0 instead of blocking the booking
+    const discountAmount = await discountget(subscriptionPlanID, true);
     const realDiscount = applyPercentagediscount(charges, discountAmount);
     const totalCharges = realDiscount;
     bookingData.subTotal = charges;
@@ -5367,7 +5428,7 @@ async function unRatedBookings(req, res) {
 async function addCard(req, res) {
   let { cardName, cardExpYear, cardExpMonth, cardNumber, cardCVC } = req.body;
   const userData = await user.findByPk(req.user.id);
-  customer_id = userData.stripeCustomerId;
+  const customer_id = await ensureStripeCustomerId(userData);
   const paymentMethod = await stripe.paymentMethods.create({
     type: "card",
     billing_details: { name: cardName },
@@ -5394,6 +5455,7 @@ async function GetCustomercards(req, res) {
   const { id } = req.user;
   const userData = await user.findOne({ where: { id: req.user.id } });
 
+  await ensureStripeCustomerId(userData);
   const Cards = await Stripe.cards(userData.stripeCustomerId);
   return res.json(returnFunction("1", "User Cards", { cards: Cards.data }, ""));
 }
@@ -5410,6 +5472,7 @@ async function makepaymentBySavedCard(req, res) {
   let { pmId, amount, bookingId } = req.body;
 
   const userData = await user.findOne({ where: { id: UserId } });
+  await ensureStripeCustomerId(userData);
 
   const userType = userData.userTypeId;
   if (userType === 3) {
@@ -5806,6 +5869,7 @@ async function makepaymentbynewcard(req, res) {
   } = req.body;
 
   const userData = await user.findOne({ where: { id: req.user.id } });
+  await ensureStripeCustomerId(userData);
   console.log("User Data---------------->", userData);
   const userType = userData.userTypeId;
   console.log("Customer User Type ID: ", userType);
@@ -7663,18 +7727,17 @@ function extractOrderData(order) {
 
 async function checkBookingLimit(userId, res) {
   try {
+    // Use the active plan (a user may have older canceled/expired rows)
     const bookingLimit = await userPlan.findOne({
-      where: { userId: userId },
+      where: { userId: userId, subscriptionStatus: "Active" },
+      order: [["id", "DESC"]],
     });
 
     if (!bookingLimit) {
       throw new CustomException("User doesn't have any subscription");
     }
 
-    const buyDateRecord = await userPlan.findOne({
-      where: { userId: userId },
-      attributes: ["buyDate"],
-    });
+    const buyDateRecord = bookingLimit;
 
     if (!buyDateRecord || !buyDateRecord.buyDate) {
       throw new CustomException("Subscription purchase date not found");
@@ -7683,15 +7746,23 @@ async function checkBookingLimit(userId, res) {
     // Convert buyDate to a JavaScript Date object
     const buyDate = new Date(buyDateRecord.buyDate);
 
-    // Set the start date to the purchase date
+    // Current monthly period: the latest monthly anniversary of the
+    // purchase date up to now, until one month after it
+    const now = new Date();
     const startDate = new Date(buyDate);
     startDate.setUTCHours(0, 0, 0, 0);
+    let months = 0;
+    while (true) {
+      const next = new Date(startDate);
+      next.setUTCMonth(startDate.getUTCMonth() + months + 1);
+      if (next > now) break;
+      months++;
+    }
+    startDate.setUTCMonth(startDate.getUTCMonth() + months);
 
-    // Calculate the end date as one month after the start date
     const endDate = new Date(startDate);
     endDate.setUTCMonth(startDate.getUTCMonth() + 1);
-    endDate.setUTCDate(0); // Last day of the month
-    endDate.setUTCHours(23, 59, 59, 999); // End of the last day
+    endDate.setUTCMilliseconds(-1); // End of the period
 
     const formattedStartDate = startDate.toISOString();
     const formattedEndDate = endDate.toISOString();
@@ -7723,15 +7794,29 @@ async function checkBookingLimit(userId, res) {
   }
 }
 
-async function discountget(subscriptionId) {
+async function discountget(subscriptionId, localPlanActive = false) {
   //console.log("Subscription ID in function : ",subscriptionId);
 
   console.log("Subscription Id in function Discount Get-------------->");
 
-  const subscription = await Braintree.getSubscriptionDetails(subscriptionId);
+  let subscription;
+  try {
+    subscription = await Braintree.getSubscriptionDetails(subscriptionId);
+  } catch (error) {
+    // E2E-B14: Braintree unreachable/failed. Only continue (no discount)
+    // when the caller confirmed an Active local userPlan row.
+    if (!localPlanActive) throw error;
+    console.error(
+      "Braintree getSubscriptionDetails failed, using discount 0:",
+      error?.message
+    );
+    return 0;
+  }
   console.log("Subscription Data in function --------------->: ", subscription);
   if (subscription.subscription.status === "Active") {
-    const discount = subscription.subscription.discounts[0].amount;
+    // Plans without a Braintree discount have an empty discounts array
+    const discounts = subscription.subscription.discounts || [];
+    const discount = discounts.length > 0 ? discounts[0].amount : 0;
     return discount;
   } else {
     throw new CustomException("Your Subscription is Canceled or Expired");
@@ -7799,6 +7884,7 @@ async function checkoutSessionsCheck(req, res) {
   const UserId = req.user.id;
 
   const userData = await user.findOne({ where: { id: UserId } });
+  await ensureStripeCustomerId(userData);
   let ammount = convertToCents(amount);
 
   const session = await stripeFunction.checkoutSessions(
@@ -8424,6 +8510,7 @@ function isValidPostalCodeRange(postalCode, country) {
 module.exports = {
   // userFunctions
   idsFunction,
+  generateUniqueVirtualBoxNumber,
   textSearchAddress,
   couponCheck,
   chargeCalculation,

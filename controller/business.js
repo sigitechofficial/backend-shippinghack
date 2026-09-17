@@ -76,6 +76,8 @@ const { sign } = require("jsonwebtoken");
 const Stripe = require("./stripe");
 const paypal = require("./paypal");
 const Braintree = require("./braintree");
+// E2E-B02: shared virtual box generator (customer.js does not require business.js)
+const { generateUniqueVirtualBoxNumber } = require("./customer");
 const fedex = require("./fedex");
 const { attachments } = require("../helper/attachment");
 const attachment = attachments();
@@ -145,30 +147,36 @@ async function registerBusiness(req, res) {
   const userExist = await user.findOne({
     where: { email: email, deletedAt: { [Op.is]: null } },
     include: { model: otpVerification },
-    attributes: ["firstName", "lastName", "email", "phoneNum"],
+    attributes: [
+      "id",
+      "firstName",
+      "lastName",
+      "email",
+      "phoneNum",
+      "userTypeId",
+      "verifiedAt",
+    ],
   });
 
-  if (userExist && userExist.userTypeId == 3) {
-    throw CustomException(
+  // Only a verified account blocks registration; an unverified business
+  // account (userTypeId 3) falls through and gets a fresh OTP
+  if (userExist && userExist.verifiedAt !== null) {
+    throw new CustomException(
       "Trying to login?",
-      "A User with the following email exists"
+      userExist.userTypeId == 3
+        ? "A Business with the following email exists already"
+        : "A User with the following email exists"
     );
   }
 
-  if (userExist && userExist.userTypeId == 1) {
-    throw CustomException(
+  if (userExist && userExist.userTypeId != 3) {
+    throw new CustomException(
       "Trying to login?",
       "A User with the following email exists"
     );
   }
 
   if (userExist) {
-    if (userExist.verifiedAt !== null) {
-      throw CustomException(
-        "Trying to login?",
-        "A Business with the following email exists already"
-      );
-    }
 
     const OTP = otpGenerator.generate(4, {
       lowerCaseAlphabets: false,
@@ -266,19 +274,24 @@ async function registerBusiness(req, res) {
 
     const html = registerUserEmail(emailData);
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_USERNAME,
-      to: [email, "sigidevelopers@gmail.com"],
-      subject: `Verification code for The Shipping Hack is`,
-      html,
-      attachments: [
-        {
-          filename: "logo.png",
-          path: __dirname + "/logo.png",
-          cid: "logoImage",
-        },
-      ],
-    });
+    // Email failure must not leave an account without an OTP row
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USERNAME,
+        to: [email, "sigidevelopers@gmail.com"],
+        subject: `Verification code for The Shipping Hack is`,
+        html,
+        attachments: [
+          {
+            filename: "logo.png",
+            path: __dirname + "/logo.png",
+            cid: "logoImage",
+          },
+        ],
+      });
+    } catch (error) {
+      console.log(error);
+    }
 
     const DT = new Date();
 
@@ -288,7 +301,12 @@ async function registerBusiness(req, res) {
       userId: newUser.id,
     });
 
-    await Braintree.createCustomer(newUser.id, newUser);
+    // Sign-up never waits on Braintree: set the customer up in the background;
+    // if that fails it is created when the user adds/lists cards
+    // (see ensureBraintreeCustomer)
+    ensureBraintreeCustomer(newUser.id).catch((error) =>
+      console.error("Braintree customer setup deferred:", error.message)
+    );
 
     return res.json(
       returnFunction(
@@ -306,16 +324,17 @@ async function registerBusiness(req, res) {
 async function verifyOTPforSignUp(req, res) {
   const { otpId, OTP, userId } = req.body;
 
+  // SECURITY: remove master OTP before production
   if (OTP == "1234") {
     const userData = await user.findByPk(userId);
-    const custeomer = await Stripe.addCustomer(
-      userData.firstName,
-      userData.email
-    );
-    const u = await user.update(
-      { verifiedAt: new Date(), stripeCustomerId: custeomer },
-      { where: { id: userId } }
-    );
+    // Sign-up never waits on Stripe: the Stripe customer is created the first
+    // time the user needs payments (ensureStripeCustomerId in customer.js).
+    // E2E-B02: business accounts need a virtual box number, like customers
+    const verifyUpdate = { verifiedAt: new Date() };
+    if (userData && !userData.virtualBox) {
+      verifyUpdate.virtualBox = await generateUniqueVirtualBoxNumber();
+    }
+    const u = await user.update(verifyUpdate, { where: { id: userId } });
     return res.json(returnFunction("1", "OTP verified", { userId }, ""));
   } else {
     const otpData = await otpVerification.findByPk(otpId, {
@@ -332,14 +351,14 @@ async function verifyOTPforSignUp(req, res) {
         "Please enter correct OTP to continue"
       );
     const userData = await user.findByPk(userId);
-    const custeomer = await Stripe.addCustomer(
-      userData.firstName,
-      userData.email
-    );
-    const u = await user.update(
-      { verifiedAt: new Date(), stripeCustomerId: custeomer },
-      { where: { id: userId } }
-    );
+    // Sign-up never waits on Stripe: the Stripe customer is created the first
+    // time the user needs payments (ensureStripeCustomerId in customer.js).
+    // E2E-B02: business accounts need a virtual box number, like customers
+    const verifyUpdate = { verifiedAt: new Date() };
+    if (userData && !userData.virtualBox) {
+      verifyUpdate.virtualBox = await generateUniqueVirtualBoxNumber();
+    }
+    const u = await user.update(verifyUpdate, { where: { id: userId } });
     return res.json(returnFunction("1", "OTP verified", { userId }, ""));
   }
 }
@@ -380,14 +399,13 @@ async function signInUser(req, res) {
     (!userData && signedBy === "apple") ||
     (!userData && signedBy === "facebook")
   ) {
-    const customer = await Stripe.addCustomer(email);
-
+    // Create the account first; the Stripe customer is created the first
+    // time the user needs payments (ensureStripeCustomerId in customer.js).
     const userData = await user.create({
       email,
       userTypeId: 1,
       signedFrom: signedBy,
       verifiedAt: new Date(),
-      stripeCustomerId: customer,
       // Add other necessary fields for social sign-up
     });
     const userId = userData.id;
@@ -1193,7 +1211,7 @@ async function planUpdate(req, res) {
 
   const planUpdateData = await Braintree.btplanUpdate(planId, planUpdate);
 
-  res.json(returnFunction("1", "Plan Updated Sucessfully", planUpdateData));
+  res.json(returnFunction("1", "Plan Updated Successfully", planUpdateData));
 }
 
 //--------------Get Plan By ID-------------------//
@@ -1236,6 +1254,7 @@ async function customerCards(req, res) {
 
   console.log("Customer ID----------------->:", userId);
 
+  await ensureBraintreeCustomer(userId);
   const allcards = await Braintree.customerAllCard(userId);
 
   res.json(returnFunction("1", "Customer All Cards", allcards));
@@ -1248,6 +1267,7 @@ async function storeNewCard(req, res) {
 
   const userId = req.user.id;
 
+  await ensureBraintreeCustomer(userId);
   const newCard = await Braintree.addCard(userId, cardDetails);
 
   res.json(returnFunction("1", "Customer New Card Added", newCard));
@@ -1285,7 +1305,12 @@ async function customerConvert(req, res) {
       }
     );
 
-    await Braintree.createCustomer(userExist.id, userExist);
+    // Don't wait on Braintree here: the Braintree customer is created the
+    // first time the user adds/lists cards (ensureBraintreeCustomer). Try it
+    // in the background so it's usually ready, but never fail the conversion.
+    ensureBraintreeCustomer(userExist.id).catch((error) =>
+      console.error("Braintree customer setup deferred:", error.message)
+    );
   }
   return res.json(returnFunction("1", "User Updated In Business"));
 }
@@ -1298,7 +1323,7 @@ async function createSubscriptionController(req, res) {
   const userId = req.user.id;
   const userSubscriptionCheck = await userSubscriptionCount(userId);
   if (userSubscriptionCheck) {
-    throw CustomException("User Already have Subscription");
+    throw new CustomException("User Already have Subscription");
   } else {
     const shippingLimit = await extractLimit(planId);
 
@@ -1313,7 +1338,7 @@ async function createSubscriptionController(req, res) {
       subscriptionId.transactions === null ||
       subscriptionId.transactions.length === 0
     ) {
-      throw CustomException("Your Transaction Failed");
+      throw new CustomException("Your Transaction Failed");
     }
 
     console.log("SubscriptionID: ", subscriptionId.id);
@@ -1363,7 +1388,14 @@ async function getCustomerActiveSubscription(req, res) {
       userId: userId,
       subscriptionStatus: "Active",
     },
-    attributes: ["subscriptionPlanID", "subscriptionStatus"],
+    // E2E-B12: type/price/expiryDate are shown on the website Membership page
+    attributes: [
+      "subscriptionPlanID",
+      "subscriptionStatus",
+      "type",
+      "price",
+      "expiryDate",
+    ],
   });
 
   console.log("Get Active Subscriptions: ", getActiveSubscription);
@@ -1372,15 +1404,27 @@ async function getCustomerActiveSubscription(req, res) {
     return res.json(returnFunction("1", "No Active Subscription"));
   } else {
     const subscriptionId = getActiveSubscription.dataValues.subscriptionPlanID;
-    const subscriptiondata = await Braintree.getSubscriptionDetails(
-      subscriptionId
-    );
+    // Still return the DB info if Braintree lookup fails
+    let subscriptiondata = null;
+    try {
+      subscriptiondata = await Braintree.getSubscriptionDetails(subscriptionId);
+    } catch (error) {
+      console.error("Braintree getSubscriptionDetails failed:", error.message);
+    }
     console.log("Active Subscription ID: ", subscriptionId);
 
+    const userData = await user.findByPk(userId, {
+      attributes: ["firstName", "lastName", "businessName"],
+    });
+
     res.json(
-      returnFunction("0", "Active Subscription ID", {
+      returnFunction("1", "Active Subscription ID", {
         subscriptionId,
         subscriptiondata,
+        type: getActiveSubscription.dataValues.type,
+        price: getActiveSubscription.dataValues.price,
+        expiryDate: getActiveSubscription.dataValues.expiryDate,
+        businessName: userData?.businessName || "",
       })
     );
   }
@@ -1740,7 +1784,7 @@ async function subscriptionCancelsBraintree(req, res) {
   });
 
   if (!userUpdate) {
-    throw CustomException("Invalid Subscription ID");
+    throw new CustomException("Invalid Subscription ID");
   } else {
     userUpdate.update({ subscriptionStatus: "Canceled" });
   }
@@ -1823,12 +1867,23 @@ let returnFunction = (status, message, data, error) => {
   };
 };
 
+// Make sure a Braintree customer exists for the user (sign-up may have
+// skipped it if Braintree was unavailable)
+async function ensureBraintreeCustomer(userId) {
+  const existing = await Braintree.customerfind(userId);
+  if (existing && existing.id) return existing;
+  const userDetails = await user.findByPk(userId, {
+    attributes: ["firstName", "lastName", "email", "phoneNum"],
+  });
+  return Braintree.createCustomer(userId, userDetails);
+}
+
 async function userSubscriptionCount(userId) {
   const count = await userPlan.count({
     where: {
       userId: userId,
       subscriptionStatus: {
-        [Op.not]: ["Canceled" || "Expired"],
+        [Op.notIn]: ["Canceled", "Expired"],
       },
     },
   });
@@ -1860,8 +1915,8 @@ function calculatExpiryDate(startDate, planType) {
 
   if (planType === "Month" || planType === "month") {
     expiryDate.setMonth(expiryDate.getMonth() + 1);
-  } else if ((planType = "Year" || planType === "YEAR")) {
-    expiryDate.setMonth(expiryDate.getFullYear() + 1);
+  } else if (planType === "Year" || planType === "YEAR") {
+    expiryDate.setFullYear(expiryDate.getFullYear() + 1);
   }
 
   return expiryDate;
@@ -1882,7 +1937,7 @@ async function extractLimit(planId) {
     return parseInt(match[1], 10);
   }
 
-  throw CustomException("Booking  not found in description");
+  throw new CustomException("Booking  not found in description");
 }
 
 //-----------------------Format Plans-------------------------------//
