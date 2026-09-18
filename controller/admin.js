@@ -6010,8 +6010,8 @@ async function createProducts(req,res) {
     productCode,
     merchantCategoryId,
     merchantSubcategoryId,
-    merchantCategoryName:findcatName.title,
-    subcategoryName:findsubCat.title,
+    merchantCategoryName: (findcatName && findcatName.title) || merchantCategoryName || null,
+    subcategoryName: (findsubCat && findsubCat.title) || subCategoryName || null,
 
   })
 
