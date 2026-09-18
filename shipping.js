@@ -32,6 +32,7 @@ const adminRouter = require('./routes/admin');
 const driverRouter = require('./routes/driver');
 const merchnatRouter=require('./routes/merchant');
 const warehouseRouter = require('./routes/warehouse');
+const authRouter = require('./routes/auth');
 const webhooks = require('./routes/webhooks');
 
 
@@ -54,6 +55,7 @@ app.use('/driver', driverRouter);
 app.use('/warehouse', warehouseRouter);
 app.use('/business',businessRouter)
 app.use('/merchant',merchnatRouter)
+app.use('/auth', authRouter)
 
 
 

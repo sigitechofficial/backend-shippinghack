@@ -1417,11 +1417,8 @@ async function addCoupon(req, res) {
             2. Get all coupons 
 */
 async function getAllCoupon(req, res) {
-  //const defaultDistanceUnit = await defaultUnit.findOne({where: {type: 'distance', status: true}, attributes: ['symbol']})
-  const defaultCurrencyUnit = await defaultUnit.findOne({
-    where: { type: "currency", status: true },
-    attributes: ["symbol"],
-  });
+  // NOTE: previously this looked up a `defaultUnit` model that does not exist,
+  // which crashed the endpoint. Currency symbol lookup removed (best-effort).
   const couponData = await coupon.findAll({
     attributes: [
       "id",
@@ -1435,12 +1432,7 @@ async function getAllCoupon(req, res) {
     ],
   });
   return res.json(
-    returnFunction(
-      "1",
-      "All coupons",
-      { couponData, currencyUnit: defaultCurrencyUnit.symbol },
-      ""
-    )
+    returnFunction("1", "All coupons", { couponData, currencyUnit: null }, "")
   );
 }
 /*
@@ -3459,6 +3451,12 @@ async function getAllbookings(req, res) {
         distance: obj.appUnit.distanceUnit.symbol,
         currency: obj.appUnit.currencyUnit.symbol,
       },
+      bookingStatus: obj.bookingStatus
+        ? { id: obj.bookingStatus.id, title: obj.bookingStatus.title }
+        : null,
+      receivingWarehouse: obj.receivingWarehouse
+        ? { companyName: obj.receivingWarehouse.companyName, located: obj.receivingWarehouse.located }
+        : null,
     };
     output.push(outobj);
   }

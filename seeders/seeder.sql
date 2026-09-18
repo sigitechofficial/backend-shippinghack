@@ -73,7 +73,8 @@ INSERT INTO `categories` VALUES (1, 'Document', 0, '/Public/Categories/document.
 
 INSERT INTO `classifiedAs` VALUES (1, 'Admin', '2022-07-04 17:21:11', '2022-07-04 17:21:11'),
 (2, 'Employee', '2022-07-04 17:21:11', '2022-07-04 17:21:11'),
-(3, 'Warehouse', '2022-07-04 17:21:11', '2022-07-04 17:21:11');
+(3, 'Warehouse', '2022-07-04 17:21:11', '2022-07-04 17:21:11'),
+(5, 'Warehouse Employee', '2022-07-04 17:21:11', '2022-07-04 17:21:11');
 
 INSERT INTO `deliveryTypes` VALUES (1, 'Delivery', 'Get Deliver at home', 1, NULL, '2023-09-26 07:41:48', '2023-09-26 07:41:48'),
 (2, 'Self PickUp', 'Self pick by the user from the delivery warehouse\n', 1, NULL, '2023-09-26 07:42:23', '2023-09-26 07:42:23');
