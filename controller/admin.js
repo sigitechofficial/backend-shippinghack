@@ -1060,28 +1060,31 @@ async function deleteWarehouse(req, res) {
             1. Get All addresses
 */
 async function getAllAddresses(req, res) {
+  // Only real columns/associations of addressDBS are used here. `district` and
+  // `province` are plain text columns on the address, not geography FKs.
   const addressData = await addressDBS.findAll({
-    where: { removed: false },
+    where: { deleted: false },
     include: [
       { model: structureType, attributes: ["title"] },
-      { model: corregimiento, attributes: ["title"] },
-      { model: district, attributes: ["title"] },
-      { model: province, attributes: ["title"] },
       { model: user, attributes: ["firstName", "lastName"] },
-      { model: webUser, attributes: ["name", "surName"] },
-      { model: warehouse, attributes: ["name"] },
     ],
     attributes: [
       "id",
+      "title",
+      "streetAddress",
+      "building",
+      "floor",
+      "apartment",
+      "district",
+      "city",
+      "province",
+      "country",
       "postalCode",
-      "secondPostalCode",
-      "addedBy",
-      "verified",
-      "buildingName",
+      "status",
     ],
+    order: [["id", "ASC"]],
   });
-  let sortedData = addressData.sort((a, b) => a.id - b.id);
-  return res.json(returnFunction("1", "All Addresses", sortedData, ""));
+  return res.json(returnFunction("1", "All Addresses", addressData, ""));
 }
 /*
             2. Get address details
@@ -1252,8 +1255,9 @@ async function editAddress(req, res) {
 */
 async function deleteAddress(req, res) {
   const { addressId } = req.body;
+  // Column is `deleted`, not `removed` (the latter is silently ignored).
   addressDBS
-    .update({ removed: true }, { where: { id: addressId } })
+    .update({ deleted: true }, { where: { id: addressId } })
     .then((data) => {
       return res.json(returnFunction("1", "Address deleted", {}, ""));
     })
@@ -5283,41 +5287,45 @@ async function adminBussinessCheck(req, res) {
 
         //console.log("Subscription IDs of all the users----->", subscriptionIds);
 
-        const subscriptionDetails=await Promise.all(subscriptionIds.map(id=> Braintree.getSubscriptionDetails(id)));
-        
-
-
-
-        // console.log("Details of Subscriptions----------->",subscriptionDetails);
-
-        
-      const userSubscriptionDetails = await Promise.all(customerGet.map(async user => {
-        const subscription = subscriptionDetails.find(
-            sub => sub.subscription.id === user?.userPlan?.dataValues?.subscriptionPlanID
+        // Fetch each subscription defensively: a payment-provider outage (or
+        // placeholder keys) must not 500 the whole business-users list.
+        const subscriptionDetails = await Promise.all(
+            subscriptionIds.map(id =>
+                Braintree.getSubscriptionDetails(id).catch(err => {
+                    console.error('Subscription fetch failed for', id, ':', err && err.message);
+                    return null;
+                })
+            )
         );
 
-        let bookingCount = await checkBookingLimit(user.id);
+      const userSubscriptionDetails = await Promise.all(customerGet.map(async user => {
+        const planId = user?.userPlan?.dataValues?.subscriptionPlanID;
+        const subscription = subscriptionDetails.find(
+            sub => sub && sub.subscription && sub.subscription.id === planId
+        );
 
-        //console.log("Booking In Controller---------------------->",bookingCount);
+        let bookingCount = null;
+        try {
+            bookingCount = await checkBookingLimit(user.id);
+        } catch (e) {
+            bookingCount = null;
+        }
 
+        const sub = subscription && subscription.subscription;
         const obj = {
-            subscriptionId: subscription.subscription.id,
-            subscription_price: subscription.subscription.price,
-            subscription_status: subscription.subscription.status,
-            subscription_transactionStatus: subscription.subscription.transactions[0]?.status || 'N/A',
-            //subscription_discount: subscription.subscription.discounts[0].amount || 'N/A',
-            completedBookings:bookingCount
+            subscriptionId: (sub && sub.id) || planId || null,
+            subscription_price: (sub && sub.price) ?? null,
+            subscription_status: (sub && sub.status) || (sub ? null : 'Unavailable'),
+            subscription_transactionStatus: (sub && sub.transactions && sub.transactions[0] && sub.transactions[0].status) || 'N/A',
+            completedBookings: bookingCount,
         };
-
-        // Get booking count and limit
-      
 
         return {
             ...user.dataValues,
             details: obj,
         };
     }));
-        return res.json(userSubscriptionDetails);
+        return res.json(returnFunction("1", "Business users", userSubscriptionDetails, ""));
     } catch (error) {
         console.error('Error fetching customer details:', error);
         return res.status(500).json({ error: 'Internal Server Error' });

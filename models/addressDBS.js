@@ -93,7 +93,11 @@ module.exports = (sequelize, DataTypes) =>{
         //Linking with the merchant Customer table
         addressDBS.hasOne(models.merchantcustomerorders,{foreignKey:'addressDBId'})
         models.merchantcustomerorders.belongsTo(addressDBS,{foreignKey:'addressDBId'})
-        
+
+        // Address -> structure type / user (FK columns structureTypeId / userId
+        // already exist on the table). Enables the admin address list includes.
+        addressDBS.belongsTo(models.structureType, { foreignKey: 'structureTypeId' });
+        addressDBS.belongsTo(models.user, { foreignKey: 'userId' });
     };
     // addressDBS.sync({alter:true})
     
