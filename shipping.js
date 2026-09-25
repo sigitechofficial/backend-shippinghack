@@ -87,10 +87,32 @@ const storage = require('./utils/storage');
 // unauthenticated, which exposed identity documents to anyone with the URL.
 // These are now reachable only via short-lived signed URLs (see /secure-file),
 // or via S3 presigned URLs when STORAGE_DRIVER=s3.
-app.use('/Public', (req, res, next) => {
+app.use('/Public', async (req, res, next) => {
   const key = 'Public' + req.path;
   if (storage.isSensitiveKey(key)) {
     return res.status(403).json({ status: '0', message: 'Forbidden' });
+  }
+  // With STORAGE_DRIVER=s3, uploaded files (barcodes, logos, profile images, …)
+  // live in the private S3 bucket, not on this instance's local ./Public folder.
+  // Stream them from S3 using the app's IAM credentials so <img>/download URLs
+  // like /Public/Barcodes/TSH-7-140648.png keep working. Local driver falls
+  // through to express.static below.
+  if (storage.DRIVER === 's3') {
+    try {
+      const { stream, contentType } = await storage.getObjectStream(key);
+      res.type(contentType || require('path').extname(key) || 'application/octet-stream');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      stream.on('error', () => {
+        if (!res.headersSent) res.status(404).end();
+      });
+      return stream.pipe(res);
+    } catch (e) {
+      const code = e && e.code === 'ENOENT' ? 404 : 500;
+      return res.status(code).json({
+        status: '0',
+        message: code === 404 ? 'Not found' : 'Error retrieving file',
+      });
+    }
   }
   next();
 });
