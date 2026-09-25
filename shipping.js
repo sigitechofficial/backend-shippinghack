@@ -87,11 +87,41 @@ const storage = require('./utils/storage');
 // unauthenticated, which exposed identity documents to anyone with the URL.
 // These are now reachable only via short-lived signed URLs (see /secure-file),
 // or via S3 presigned URLs when STORAGE_DRIVER=s3.
+const barcodeUtil = require('./utils/barcode');
+const nodePath = require('path');
+
+// True when a storage/read error means "object does not exist" (S3 NoSuchKey /
+// 404 metadata, or local ENOENT) as opposed to a real failure.
+function isNotFound(err) {
+  if (!err) return false;
+  if (err.code === 'ENOENT') return true;
+  if (err.name === 'NoSuchKey' || err.name === 'NotFound') return true;
+  const status = err.$metadata && err.$metadata.httpStatusCode;
+  return status === 404;
+}
+
+// Regenerate a missing barcode PNG from its trackingId, cache it back to storage
+// (best-effort), and stream it to the client. Barcodes are a pure function of
+// the trackingId, so this self-heals historic bookings whose images were never
+// migrated to S3 without needing any data migration.
+async function serveRegeneratedBarcode(key, res) {
+  const trackingId = barcodeUtil.trackingIdFromKey(key);
+  if (!trackingId) return res.status(404).end();
+  const buffer = await barcodeUtil.generateBarcodePng(trackingId);
+  // Persist for next time; ignore failures (still serve the freshly rendered one).
+  storage.putFile(buffer, key, 'image/png').catch(() => {});
+  res.type('png');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  return res.send(buffer);
+}
+
 app.use('/Public', async (req, res, next) => {
   const key = 'Public' + req.path;
   if (storage.isSensitiveKey(key)) {
     return res.status(403).json({ status: '0', message: 'Forbidden' });
   }
+  const isBarcode = barcodeUtil.trackingIdFromKey(key) !== null;
+
   // With STORAGE_DRIVER=s3, uploaded files (barcodes, logos, profile images, …)
   // live in the private S3 bucket, not on this instance's local ./Public folder.
   // Stream them from S3 using the app's IAM credentials so <img>/download URLs
@@ -100,18 +130,39 @@ app.use('/Public', async (req, res, next) => {
   if (storage.DRIVER === 's3') {
     try {
       const { stream, contentType } = await storage.getObjectStream(key);
-      res.type(contentType || require('path').extname(key) || 'application/octet-stream');
+      res.type(contentType || nodePath.extname(key) || 'application/octet-stream');
       res.setHeader('Cache-Control', 'public, max-age=3600');
       stream.on('error', () => {
         if (!res.headersSent) res.status(404).end();
       });
       return stream.pipe(res);
     } catch (e) {
-      const code = e && e.code === 'ENOENT' ? 404 : 500;
+      if (isBarcode && isNotFound(e)) {
+        try {
+          return await serveRegeneratedBarcode(key, res);
+        } catch (regenErr) {
+          console.error('Barcode regeneration failed:', key, regenErr && regenErr.message);
+          return res.status(500).json({ status: '0', message: 'Error retrieving file' });
+        }
+      }
+      const code = isNotFound(e) ? 404 : 500;
       return res.status(code).json({
         status: '0',
         message: code === 404 ? 'Not found' : 'Error retrieving file',
       });
+    }
+  }
+
+  // local driver: regenerate on-the-fly if a barcode file is missing on disk.
+  if (isBarcode) {
+    const localPath = nodePath.join(__dirname, key);
+    if (!require('fs').existsSync(localPath)) {
+      try {
+        return await serveRegeneratedBarcode(key, res);
+      } catch (regenErr) {
+        console.error('Barcode regeneration failed:', key, regenErr && regenErr.message);
+        return res.status(500).json({ status: '0', message: 'Error retrieving file' });
+      }
     }
   }
   next();
