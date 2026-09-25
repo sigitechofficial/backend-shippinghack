@@ -40,11 +40,12 @@ const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1'
 const S3_PUBLIC_BASE_URL = (process.env.S3_PUBLIC_BASE_URL || '').replace(/\/$/, '');
 
 // Path prefixes that hold sensitive identity/legal documents. NEVER public.
+// NOTE: RestrictedItems is intentionally NOT here — those are public display
+// icons for restricted-item categories (e.g. explosive.png), not private docs.
 const SENSITIVE_PREFIXES = [
   'Public/LicenseImages',
   'Public/Images/LicenseImages',
   'Public/SignatureImages',
-  'Public/RestrictedItems',
 ];
 
 function normalizeKey(key) {
