@@ -39,14 +39,14 @@ const S3_BUCKET = process.env.S3_BUCKET;
 const S3_REGION = process.env.S3_REGION || process.env.AWS_REGION || 'us-east-1';
 const S3_PUBLIC_BASE_URL = (process.env.S3_PUBLIC_BASE_URL || '').replace(/\/$/, '');
 
-// Path prefixes that hold sensitive identity/legal documents. NEVER public.
-// NOTE: RestrictedItems is intentionally NOT here — those are public display
-// icons for restricted-item categories (e.g. explosive.png), not private docs.
-const SENSITIVE_PREFIXES = [
-  'Public/LicenseImages',
-  'Public/Images/LicenseImages',
-  'Public/SignatureImages',
-];
+// Path prefixes that hold sensitive identity/legal documents.
+//
+// TEMPORARY (2026-09-25, by owner request): this list is intentionally empty so
+// ALL /Public assets — including LicenseImages and SignatureImages — serve
+// publicly, matching the app's original behaviour. This exposes driver licences
+// and signatures to anyone with the URL. Revisit and move these back behind
+// signed URLs (storage.getSignedUrl + /secure-file) before production.
+const SENSITIVE_PREFIXES = [];
 
 function normalizeKey(key) {
   return String(key || '')
