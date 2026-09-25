@@ -1,19 +1,10 @@
 require('dotenv').config();
 
 
-const admin = require('firebase-admin')
+const admin = require('./firebaseAdmin')
 const { Op,literal } = require("sequelize");
 let {deviceToken}=require('../models');
-const translate = require('translate-google'); 
- 
-
-
-const serviceAccount = require('../firebase.json')
-
-// Initialize Firebase Admin SDK using the service account JSON file
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-})
+const translate = require('translate-google');
 
 module.exports = async function sendNotification(to, notification, data) {
   try {

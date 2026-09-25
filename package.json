@@ -1,16 +1,22 @@
 {
-  "name": "6.-pps-logistica",
+  "name": "theshippinghack-api",
   "version": "1.0.0",
-  "description": "",
+  "description": "TheShippingHack Backend API",
   "main": "shipping.js",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon -L shipping.js"
+    "start": "node shipping.js",
+    "dev": "nodemon -L shipping.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.699.0",
+    "@aws-sdk/s3-request-presigner": "^3.699.0",
     "@paypal/checkout-server-sdk": "^1.0.3",
     "axios": "^1.2.2",
     "base64-img": "^1.0.4",
@@ -34,7 +40,6 @@
     "mysql2": "^2.3.3",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.14",
-    "nodemon": "^3.0.1",
     "otp-generator": "^4.0.0",
     "pdfkit": "^0.13.0",
     "randomstring": "^1.2.3",
@@ -49,5 +54,8 @@
     "swagger-ui-express": "^5.0.1",
     "translate-google": "^1.5.0",
     "xmldom": "^0.6.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
 }

@@ -24,13 +24,13 @@ VALUES
         'Driver',
         '2022-07-04 17:21:11',
         '2022-07-04 17:21:11'
-    );
+    ),
     (
         3,
         'Business',
         '2022-07-04 17:21:11',
         '2022-07-04 17:21:11'
-    );
+    ),
     (
         4,
         'Merchant',
@@ -664,11 +664,12 @@ VALUES
     );
 INSERT INTO
     `bookingstatuses` (
+        `id`,
         `title`,
         `description`,
         `createdAt`,
         `updatedAt`
-    ) 
+    )
 VALUES
 (1, 'Order Created\r\n', 'Your order has been \r\ncreated', '2023-09-26 07:55:31', '2023-09-26 07:55:31'),
 (7, 'Received at Warehouse (USA warehouse)\r\n', 'Confirmation of order received by warehouse', '2023-09-26 07:56:14', '2023-09-26 07:56:14'),
@@ -760,5 +761,14 @@ VALUES
         '3',
         '4'
     );
+    -- cancel reasons
+    INSERT INTO reasons (id, reason, createdAt, updatedAt) VALUES
+    (1, 'Changed my mind', NOW(), NOW()),
+    (2, 'Found a better price', NOW(), NOW()),
+    (3, 'Ordered by mistake', NOW(), NOW()),
+    (4, 'Shipping takes too long', NOW(), NOW()),
+    (5, 'Duplicate order', NOW(), NOW()),
+    (6, 'other', NOW(), NOW());
+
     -- seeders
     COMMIT;

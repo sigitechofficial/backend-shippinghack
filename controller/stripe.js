@@ -3,7 +3,7 @@ const stripe = require("stripe")(STRIPE_SECRET_KEY);
 const CustomException = require("../middleware/errorObject");
 const { returnFunction } = require("../utils/helperFuncCompany");
 const { providerError } = require("../utils/providerErrors");
-const endpointSecret = "whsec_febTITVhHXIIyjFfuVvCuFMR70zCi3qV";
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 //! Customers
 /*
@@ -415,9 +415,9 @@ async function createConnectAccount(email, country) {
 
   const accountLink = await stripe.accountLinks.create({
     account: account.id,
-    refresh_url: "https://example.com/reauth",
+    refresh_url: (process.env.API_URL || "https://example.com") + "/reauth",
     return_url:
-      "https://backend.trimworldwide.com/StripeAccountSuccessfulScreen",
+      (process.env.API_URL || "https://example.com") + "/StripeAccountSuccessfulScreen",
     type: "account_onboarding",
   });
   return { accountLink, accountId: account.id };
@@ -428,8 +428,8 @@ async function createCheckoutSession(line_items, accountId, applicationFee) {
     payment_method_types: ["card"],
     line_items: line_items,
     mode: "payment",
-    success_url: "https://example.com/success",
-    cancel_url: "https://example.com/cancel",
+    success_url: (process.env.FRONTEND_URL || "https://example.com") + "/success",
+    cancel_url: (process.env.FRONTEND_URL || "https://example.com") + "/cancel",
     payment_intent_data: {
       application_fee_amount: applicationFee, // Fee amount in cents
       transfer_data: {
@@ -463,7 +463,7 @@ async function capturePayment(amount, customerId, paymentMethodId, accountId) {
       customer: customerId,
       capture_method: "manual", // Payment needs to be captured manually
       confirm: true, // Confirm the Payment Intent immediately
-      return_url: "https://example.com/reauth",
+      return_url: (process.env.API_URL || "https://example.com") + "/reauth",
       transfer_data: {
         destination: accountId, // Replace with the Connect account ID
       },
@@ -482,9 +482,9 @@ async function capturePayment(amount, customerId, paymentMethodId, accountId) {
 async function createStripeAccountLink(accountId) {
   const accountLink = await stripe.accountLinks.create({
     account: accountId,
-    refresh_url: "https://example.com/reauth",
+    refresh_url: (process.env.API_URL || "https://example.com") + "/reauth",
     return_url:
-      "https://backend.trimworldwide.com/StripeAccountSuccessfulScreen",
+      (process.env.API_URL || "https://example.com") + "/StripeAccountSuccessfulScreen",
     type: "account_onboarding",
   });
   return accountLink.url;
@@ -538,11 +538,12 @@ async function createSubscriptionWithPriceId(customerId, priceId) {
 
 async function checkoutSessions(amount, userId, bookingType,bookingId,successUrl,cancelUrl) {
   console.log("🚀 ~ checkoutSessions ~ bookingType:", bookingId);
-  const finalSuccessUrl = successUrl || "https://stageweb.theshippinghack.com/payment-success";
+  const frontendUrl = process.env.FRONTEND_URL || "https://stageweb.theshippinghack.com";
+  const finalSuccessUrl = successUrl || `${frontendUrl}/payment-success`;
     const finalCancelUrl = cancelUrl || (
       bookingType === 'international'
-        ? 'https://stageweb.theshippinghack.com/parcel-detail'
-        : 'https://stageweb.theshippinghack.com/send-parcel-locally-detail'
+        ? `${frontendUrl}/parcel-detail`
+        : `${frontendUrl}/send-parcel-locally-detail`
     );
   try {
     const session = await stripe.checkout.sessions.create({

@@ -1,13 +1,13 @@
 const axios = require('axios');
 const CustomException = require("../middleware/errorObject");
 
+const FEDEX_API_BASE = process.env.FEDEX_ENVIRONMENT === 'production'
+  ? 'https://apis.fedex.com'
+  : 'https://apis-sandbox.fedex.com';
+
 
 async function trackFedExPackage(trackingNumber) {
   try {
-    // Log client_id and client_secret
-    console.log('Client ID:', process.env.client_id_track);
-    console.log('Client Secret:', process.env.client_secret_track);
-
     // Create the payload for tracking
     const payload = {
       trackingInfo: [
@@ -22,7 +22,7 @@ async function trackFedExPackage(trackingNumber) {
 
     // Get the OAuth token
     const token = await axios.post(
-      "https://apis-sandbox.fedex.com/oauth/token",
+      `${FEDEX_API_BASE}/oauth/token`,
       {
         grant_type: "client_credentials",
         client_id: process.env.client_id_track,
@@ -38,7 +38,7 @@ async function trackFedExPackage(trackingNumber) {
 
     // Make the request to track the package
     const response = await axios.post(
-      "https://apis-sandbox.fedex.com/track/v1/trackingnumbers",
+      `${FEDEX_API_BASE}/track/v1/trackingnumbers`,
       payload,
       {
         headers: {
@@ -61,13 +61,11 @@ async function trackFedExPackage(trackingNumber) {
 
 async function validatePostalCode(addressData) {
   console.log("Validating Postal Code:", addressData.streetAddress);
-  console.log("client_id:", process.env.client_id);
-  console.log("client_secret:", process.env.client_secret);
 
   try {
       // Fetch the access token
       const tokenResponse = await axios.post(
-          "https://apis-sandbox.fedex.com/oauth/token",
+          `${FEDEX_API_BASE}/oauth/token`,
           new URLSearchParams({
               grant_type: "client_credentials",
               client_id: process.env.client_id,
@@ -81,7 +79,6 @@ async function validatePostalCode(addressData) {
       );
 
       const accessToken = tokenResponse.data.access_token;
-      console.log("Access Token:", accessToken);
 
       // Prepare the payload for postal code validation
       const payload = {
@@ -94,7 +91,7 @@ async function validatePostalCode(addressData) {
     };
       // Make the POST request to validate the postal code
       const response = await axios.post(
-          "https://apis-sandbox.fedex.com/country/v1/postal/validate",
+          `${FEDEX_API_BASE}/country/v1/postal/validate`,
           payload,
           {
               headers: {

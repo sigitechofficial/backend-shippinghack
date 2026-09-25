@@ -5,7 +5,6 @@ const redis_Client = require('../routes/redis_connect')
 module.exports = async function validateToken(req,res, next){
     try {
         const accessToken = req.header('accessToken');
-        console.log(accessToken);
         console.log("URL--------------------->",req.url);
         //If no token -- Throw Error
         if(!accessToken) throw new Error();

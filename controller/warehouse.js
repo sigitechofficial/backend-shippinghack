@@ -4125,82 +4125,83 @@ async function createRemeasurement(req, res) {
   });
    console.log("==================>allPackages==============",allPackages)
   if (allPackages.length === 0) {
-    const parcels = await package.findAll({
-      where: { bookingId: pack.bookingId, arrived: 'arrived' },
-    });
-    const total = calculateTotalValues(parcels)
-    console.log("==================>total==============",total)
-    await booking.update(
-      {
+    try {
+      const parcels = await package.findAll({
+        where: { bookingId: pack.bookingId, arrived: 'arrived' },
+      });
+      const total = calculateTotalValues(parcels)
+      console.log("==================>total==============",total)
+      await booking.update(
+        {
+          bookingStatusId: 8,
+          weight: parseFloat(total.weight),
+          length: parseFloat(total.length),
+          width: parseFloat(total.width),
+          height: parseFloat(total.height),
+          volume: parseFloat(total.volume)
+        },
+        { where: { id: pack.bookingId } }
+      );
+      const time = getDateAndTime();
+      await bookingHistory.create({
+        date: time.currentDate,
+        time: time.currentTime,
+        bookingId: pack.bookingId,
         bookingStatusId: 8,
-        weight: parseFloat(total.weight),
-        length: parseFloat(total.length),
-        width: parseFloat(total.width),
-        height: parseFloat(total.height),
-        volume: parseFloat(total.volume)
-      },
-      { where: { id: pack.bookingId } }
-    );
-    const time = getDateAndTime();
-    // let bokingHistory = {
-    //   date: time.currentDate,
-    //   time: time.currentTime,
-    //   bookingId: pack.bookingId,
-    //   bookingStatusId: 8,
-    // };
-    await bookingHistory.create({
-      date: time.currentDate,
-      time: time.currentTime,
-      bookingId: pack.bookingId,
-      bookingStatusId: 8,
-    });
-    if (pack.booking?.customer?.deviceTokens) {
-      let to = pack.booking.customer.deviceTokens.map((inEle) => {
-        return inEle.tokenId;
-      })
-      let notification = {
-        title: `Re-measurement Complete`,
-        body: `Re-measurement is complete of Order ${pack.bookingId}. Provide delivery info, receiver details, select shipping, and pay for swift delivery`,
+      });
+      if (pack.booking?.customer?.deviceTokens) {
+        let to = pack.booking.customer.deviceTokens.map((inEle) => {
+          return inEle.tokenId;
+        })
+        let notification = {
+          title: `Re-measurement Complete`,
+          body: `Re-measurement is complete of Order ${pack.bookingId}. Provide delivery info, receiver details, select shipping, and pay for swift delivery`,
+        }
+        sendNotification(to, notification, { id: pack.booking.id, bookingStatusId: pack.booking.bookingStatusId });
       }
-      sendNotification(to, notification, { id: pack.booking.id, bookingStatusId: pack.booking.bookingStatusId });
-    }
-    let bookingData = await booking.findOne({
-      where: { id: pack.bookingId },
-      include: [
-        {
-          model: user,
-          as: "customer",
-          attributes: ["firstName", "email"],
-        },
-        {
-          model: package,
-          attributes: [
-            "arrived",
-            "actualWeight",
-            "actualVolume"
-          ],
-        },
-        { model: logisticCompany, attributes: ['title', 'divisor'] },
-        // {model: warehouse, as: 'receivingWarehouse', attributes: ['id']}
-      ],
-      attributes: ['receiverName', 'receiverEmail', 'createdAt', 'consolidation', 'trackingId', 'total']
-    });
-    //  res.json({bookingData})
+      let bookingData = await booking.findOne({
+        where: { id: pack.bookingId },
+        include: [
+          {
+            model: user,
+            as: "customer",
+            attributes: ["firstName", "email"],
+          },
+          {
+            model: package,
+            attributes: [
+              "arrived",
+              "actualWeight",
+              "actualVolume"
+            ],
+          },
+          { model: logisticCompany, attributes: ['title', 'divisor'] },
+        ],
+        attributes: ['receiverName', 'receiverEmail', 'createdAt', 'consolidation', 'trackingId', 'total']
+      });
 
-    var arrived = bookingData.packages.filter((ele) => ele.arrived == "arrived");
-    const totalWeight = calculateWeights(arrived, bookingData.logisticCompany.divisor);
-    console.log("🚀 ~ createRemeasurement ~ totalWeight:", totalWeight)
-    const to = ['sigidevelopers@gmail.com'];
-    let name = bookingData.receiverName
-    if (bookingData.customer) {
-      to.push(bookingData.customer.email)
-      name = bookingData.customer.firstName
-    } else {
-      to.push(bookingData.receiverEmail)
+      if (bookingData?.logisticCompany) {
+        var arrived = bookingData.packages.filter((ele) => ele.arrived == "arrived");
+        const totalWeight = calculateWeights(arrived, bookingData.logisticCompany.divisor);
+        console.log("🚀 ~ createRemeasurement ~ totalWeight:", totalWeight)
+        const to = ['sigidevelopers@gmail.com'];
+        let name = bookingData.receiverName
+        if (bookingData.customer) {
+          to.push(bookingData.customer.email)
+          name = bookingData.customer.firstName
+        } else {
+          to.push(bookingData.receiverEmail)
+        }
+        const consolidation = bookingData.consolidation ? 'Yes' : 'No';
+        try {
+          remeasurementMail(to, name, bookingData.trackingId, arrived.length, consolidation, totalWeight.chargedWeight)
+        } catch (e) {
+          console.log("Remeasurement email failed:", e.message)
+        }
+      }
+    } catch (e) {
+      console.log("Post-measurement update failed:", e.message)
     }
-    const consolidation = bookingData.consolidation ? 'Yes' : 'No';
-
-    remeasurementMail(to, name, bookingData.trackingId, arrived.length, consolidation, totalWeight.chargedWeight)
   }
   if (pack)
     return res.json(

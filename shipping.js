@@ -4,102 +4,169 @@ const app = express();
 const db = require('./models');
 const cors = require('cors');
 const error = require('./middleware/error');
-//const { Server } = require("socket.io");
 const server = require('http').createServer(app);
 var bodyParser = require('body-parser')
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./swagger');
 
-// Node 15+ exits on an unhandled promise rejection. Some fire-and-forget work
-// (e.g. barcode rendering after an order is created) can reject outside any
-// request's try/catch; log it instead of taking the whole API down.
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled promise rejection:', reason);
 });
 
-
-// const io = new Server(server, {
-//   cors: {
-//     origin: "http://localhost:3000",
-//     methods: ["GET", "POST"],
-//   },
-// });
+// Trust proxy when behind Nginx/ALB
+if (process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging') {
+  app.set('trust proxy', 1);
+}
 
 // Importing routes
 const customerRouter = require('./routes/customer');
 const businessRouter = require('./routes/business');
 const adminRouter = require('./routes/admin');
 const driverRouter = require('./routes/driver');
-const merchnatRouter=require('./routes/merchant');
+const merchnatRouter = require('./routes/merchant');
 const warehouseRouter = require('./routes/warehouse');
 const authRouter = require('./routes/auth');
 const webhooks = require('./routes/webhooks');
 
-
+// Stripe webhooks need raw body BEFORE json parsing
 app.use('/webhooks', bodyParser.raw({ type: 'application/json' }), webhooks);
 
-app.use(cors());
+// CORS — environment-driven allowed origins
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.length === 0) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+};
+app.use(cors(corsOptions));
+
 app.use(express.json());
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
-// Middleware which tells the server the format to send data
-
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// Health check — unauthenticated, fast, no third-party calls
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 
+// Readiness check — lightweight DB + Redis ping
+app.get('/ready', async (_req, res) => {
+  try {
+    await db.sequelize.authenticate();
+    const redis_Client = require('./routes/redis_connect');
+    await redis_Client.ping();
+    res.status(200).json({ status: 'ready' });
+  } catch (err) {
+    res.status(503).json({ status: 'not ready', error: err.message });
+  }
+});
 
-// routes
+// Routes
 app.use('/customer', customerRouter);
 app.use('/admin', adminRouter);
 app.use('/driver', driverRouter);
 app.use('/warehouse', warehouseRouter);
-app.use('/business',businessRouter)
-app.use('/merchant',merchnatRouter)
-app.use('/auth', authRouter)
+app.use('/business', businessRouter);
+app.use('/merchant', merchnatRouter);
+app.use('/auth', authRouter);
 
+// Static files
+const storage = require('./utils/storage');
 
-
-
-// To make the folder Public
+// Block direct public access to sensitive upload directories (driver licences,
+// signatures, restricted items). Previously ALL of ./Public was served
+// unauthenticated, which exposed identity documents to anyone with the URL.
+// These are now reachable only via short-lived signed URLs (see /secure-file),
+// or via S3 presigned URLs when STORAGE_DRIVER=s3.
+app.use('/Public', (req, res, next) => {
+  const key = 'Public' + req.path;
+  if (storage.isSensitiveKey(key)) {
+    return res.status(403).json({ status: '0', message: 'Forbidden' });
+  }
+  next();
+});
 app.use('/Public', express.static('./Public'));
 
+// Signed-URL access for stored files (local driver). The HMAC-signed, expiring
+// link is issued by authenticated API handlers via storage.getSignedUrl(); this
+// endpoint verifies it and streams the object. When STORAGE_DRIVER=s3, signed
+// URLs point directly at S3 and this route is unused.
+app.get('/secure-file', async (req, res) => {
+  try {
+    const key = storage.verifyLocalSignedUrl({
+      key: req.query.key,
+      exp: req.query.exp,
+      sig: req.query.sig,
+    });
+    if (!key) {
+      return res.status(403).json({ status: '0', message: 'Invalid or expired link' });
+    }
+    const { stream, contentType } = await storage.getObjectStream(key);
+    if (contentType) res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    stream.on('error', () => {
+      if (!res.headersSent) res.status(404).end();
+    });
+    stream.pipe(res);
+  } catch (e) {
+    const code = e && e.code === 'ENOENT' ? 404 : 500;
+    return res.status(code).json({
+      status: '0',
+      message: code === 404 ? 'Not found' : 'Error retrieving file',
+    });
+  }
+});
+
 app.use(error);
-// io.on("connection", async (socket) => {
-//   console.log(`User Connected: ${socket.id}`);
-//   socket.on("ping", (data, callBack)=>{
-//     socket.emit('pong');
-//     socket.emit('message', "This is a message through socket")
-//   })
-  
-//   // * If error in connection
-//   socket.on("connect_error", (err) => {
-//     console.log(`connect_error due to ${err.message}`);
-//   });
 
-//   // * Showing the disconnet message
-//   socket.on("disconnect", (err) => {
-//     console.log("User Disconnected", socket.id, err);
-//   });
-// });
-
-// Initializing Server along with creating all the tables that exist in the models folder
+// Start server
 var server_port = process.env.PORT || 3000;
 let syncDb = 0;
-if(syncDb){
-  db.sequelize.sync({alter:true})
-  .then(() => {
-    //app.listen(process.env.PORT, ()=> {console.log(`Starting the server at port ${process.env.PORT} ...`)});
-    server.listen(server_port, function (err) {
-      if (err) throw err
-      console.log('Listening on port %d', server_port);
+if (syncDb) {
+  db.sequelize.sync({ alter: true })
+    .then(() => {
+      server.listen(server_port, '0.0.0.0', function (err) {
+        if (err) throw err;
+        console.log('Listening on port %d', server_port);
+      });
     });
-  });
-}
-else{
-  server.listen(server_port, function (err) {
-    if (err) throw err
+} else {
+  server.listen(server_port, '0.0.0.0', function (err) {
+    if (err) throw err;
     console.log('Listening on port %d', server_port);
   });
 }
 
+// Graceful shutdown
+function gracefulShutdown(signal) {
+  console.log(`${signal} received. Shutting down gracefully...`);
+  server.close(async () => {
+    console.log('HTTP server closed');
+    try {
+      await db.sequelize.close();
+      console.log('Database connection closed');
+    } catch (e) { /* ignore */ }
+    try {
+      const redis_Client = require('./routes/redis_connect');
+      await redis_Client.quit();
+      console.log('Redis connection closed');
+    } catch (e) { /* ignore */ }
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+}
 
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

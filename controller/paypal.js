@@ -3,9 +3,19 @@ const paypal = require("@paypal/checkout-server-sdk");
 const axios = require("axios");
 const { head } = require("../routes/business");
 
+const PAYPAL_API_BASE = process.env.PAYPAL_ENVIRONMENT === 'live'
+  ? 'https://api-m.paypal.com'
+  : 'https://api-m.sandbox.paypal.com';
+const PAYPAL_VAULT_BASE = process.env.PAYPAL_ENVIRONMENT === 'live'
+  ? 'https://api.paypal.com'
+  : 'https://api.sandbox.paypal.com';
+
 function environment() {
   let clientId = process.env.paypalClientId;
   let clientSecret = process.env.paypalClientSecret;
+  if (process.env.PAYPAL_ENVIRONMENT === 'live') {
+    return new paypal.core.LiveEnvironment(clientId, clientSecret);
+  }
   return new paypal.core.SandboxEnvironment(clientId, clientSecret);
 }
 
@@ -26,7 +36,7 @@ async function createPaypalProduct(planData) {
 
   try {
     const response = await axios.post(
-      "https://api-m.sandbox.paypal.com/v1/catalogs/products",
+      `${PAYPAL_API_BASE}/v1/catalogs/products`,
       productData,
       {
         headers: {
@@ -50,7 +60,7 @@ async function createPaypalProduct(planData) {
 
 async function createPlans(prod_id, planData, billingType) {
 const { token } = await createPaypalToken();
-const url = "https://api-m.sandbox.paypal.com/v1/billing/plans";
+const url = `${PAYPAL_API_BASE}/v1/billing/plans`;
 
 const config = {
     headers: {
@@ -122,10 +132,8 @@ try {
 async function DeactivatePlan(plan_id) {
   const { token } = await createPaypalToken();
 
-  console.log("Token ", token);
-
   const url =
-    "https://api-m.sandbox.paypal.com/v1/billing/plans/P-7GL4271244454362WXNWU5NQ/deactivate";
+    `${PAYPAL_API_BASE}/v1/billing/plans/P-7GL4271244454362WXNWU5NQ/deactivate`;
   // return token;
 
   const config = {
@@ -156,7 +164,7 @@ async function DeactivatePlan(plan_id) {
 async function creditCardInfo(cardDetails) {
   const { token } = await createPaypalToken();
 
-  const url = "https://api.sandbox.paypal.com/v1/vault/credit-cards";
+  const url = `${PAYPAL_VAULT_BASE}/v1/vault/credit-cards`;
 
   const config = {
     headers: {
@@ -167,7 +175,6 @@ async function creditCardInfo(cardDetails) {
   };
 
   const response = await axios.post(url, cardDetails, config);
-  console.log("Card Response Data: ", response.data);
 
   return { cardData: response.data, payerId: response.data.payer_id };
 }
@@ -184,7 +191,7 @@ async function SubscriptionCreatePayPal(plan_id, subscriberDetails, cardId) {
   let futureDate = new Date();
   futureDate.setHours(futureDate.getMinutes() + 10);
 
-  const url = "https://api-m.sandbox.paypal.com/v1/billing/subscriptions";
+  const url = `${PAYPAL_API_BASE}/v1/billing/subscriptions`;
 
   const config = {
     headers: {
@@ -254,7 +261,7 @@ async function fetchPayPalProducts() {
   const { token } = await createPaypalToken();
 
   const url =
-    "https://api-m.sandbox.paypal.com/v1/catalogs/products?page_size=45&page=1&total_required=true"; // Set the Pages Size to fetch products
+    `${PAYPAL_API_BASE}/v1/catalogs/products?page_size=45&page=1&total_required=true`; // Set the Pages Size to fetch products
 
   const config = {
     headers: {
@@ -284,7 +291,7 @@ async function GetALLPlans() {
   const { token } = await createPaypalToken();
 
   const url =
-    "https://api-m.sandbox.paypal.com/v1/billing/plans?sort_by=create_time&sort_order=desc";
+    `${PAYPAL_API_BASE}/v1/billing/plans?sort_by=create_time&sort_order=desc`;
 
   const config = {
     headers: {
@@ -314,7 +321,7 @@ async function getAllSubscriptions(subscriptionId) {
 
   console.log("Subscription ID: ", subscriptionId);
 
-  const url = `https://api-m.sandbox.paypal.com/v1/billing/subscriptions/${subscriptionId}`;
+  const url = `${PAYPAL_API_BASE}/v1/billing/subscriptions/${subscriptionId}`;
 
   const config = {
     headers: {
@@ -344,7 +351,7 @@ async function planById(planId) {
 
   console.log("My Plan ID: ", planId);
 
-  const url = `https://api-m.sandbox.paypal.com/v1/billing/plans/${planId}`;
+  const url = `${PAYPAL_API_BASE}/v1/billing/plans/${planId}`;
 
   const config = {
     headers: {
@@ -366,7 +373,7 @@ async function getcardDetails(cardId){
 
     const {token}=await createPaypalToken();
 
-    const url=`https://api.sandbox.paypal.com/v1/vault/credit-cards/${cardId}`
+    const url=`${PAYPAL_VAULT_BASE}/v1/vault/credit-cards/${cardId}`
 
     const config={
         headers:{
@@ -419,7 +426,7 @@ async function createPaypalToken() {
   let encodedToken = Buffer.from(`${login}:${password}`).toString("base64");
   await axios({
     method: "post",
-    url: "https://api-m.sandbox.paypal.com/v1/oauth2/token",
+    url: `${PAYPAL_API_BASE}/v1/oauth2/token`,
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Authorization: "Basic " + encodedToken,
@@ -431,7 +438,10 @@ async function createPaypalToken() {
       token = response.data.access_token;
     })
     .catch(function (error) {
-      console.log("Error obtaining PayPal token:", error);
+      // Do not log the full error object: axios serializes request config,
+      // including the Basic-auth Authorization header, which contains the
+      // PayPal client credentials.
+      console.log("Error obtaining PayPal token:", error.message);
     });
   return output ? { status: true, token } : { status: false, token };
 }

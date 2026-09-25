@@ -1,8 +1,11 @@
 const braintree = require('braintree');
 const { v4: uuidv4 } = require('uuid');
 const { cards } = require('./stripe');
+const btEnv = process.env.BRAINTREE_ENVIRONMENT === 'production'
+    ? braintree.Environment.Production
+    : braintree.Environment.Sandbox;
 const gateway = new braintree.BraintreeGateway({
-    environment: braintree.Environment.Sandbox, // Change to Production for live
+    environment: btEnv,
     merchantId: process.env.MERCHANT_ID,
     publicKey: process.env.Public_Key,
     privateKey: process.env.Private_Key
@@ -185,8 +188,6 @@ async function addCard(customerId,cardDetails){
 
     console.log("Customer ID in function: ",customerId);
 
-    console.log("Card Details in function:",cardDetails)
-
     try {
         const result=await gateway.creditCard.create({
             customerId: customerId,
@@ -219,8 +220,6 @@ async function addCard(customerId,cardDetails){
 async function updateCard(customerId,cardToken,cardDetails){
 
     console.log("Card Token: ",cardToken);
-
-    console.log("Card Details : ",cardDetails)
 
     const result=await gateway.creditCard.update(cardToken,{
         customerId: customerId,

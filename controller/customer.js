@@ -1277,8 +1277,6 @@ async function createFedexShipmentInt(bookingData) {
       }
     );
 
-    console.log("FedEx token ====================>", token.data.access_token);
-
     const responses = [];
     for (const pkg of bookingData.packages) {
       const payload = {
@@ -1575,7 +1573,6 @@ async function sendOTP(req, res) {
       OTP,
     };
     let html = registerUserEmail(emailData);
-    console.log("process.env.EMAIL_USERNAME", process.env.EMAIL_USERNAME);
     transporter.sendMail(
       {
         from: process.env.EMAIL_USERNAME, // sender address
@@ -7901,17 +7898,11 @@ async function checkoutSessionsCheck(req, res) {
 
 //========================Stripe Webhooks for Session Completed========================//
 async function stripeWebhook(req, res) {
-  let endpointSecret;
-  if(process.env.NODE_ENV !== 'production'){
-     endpointSecret = "whsec_febTITVhHXIIyjFfuVvCuFMR70zCi3qV";
-     console.log("🚀 ~ stripeWebhook IF ~ endpointSecret:", endpointSecret)
-  }else{
-     endpointSecret = "whsec_vBPiSfLR7q0nYzt0NLIXpYKMgm5Ls2uc";
-     console.log("🚀 ~ stripeWebhook ELSE ~ endpointSecret:", endpointSecret)
-
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!endpointSecret) {
+    console.error('STRIPE_WEBHOOK_SECRET is not configured');
+    return res.status(500).send('Webhook secret not configured');
   }
-  
-  console.log("req.headers====================================>", req.headers)
   const sig = req.headers['stripe-signature'];
   let event;
 
@@ -8381,87 +8372,34 @@ async function intentGet(req, res) {
     console.log(" Fedex local function Call------------>");
 
     if (bookingData.bookingTypeId == 6) {
-      const fedexShipment = await createFedexShipmentLoc(bookingData);
-      const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
-      const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
+      try {
+        const fedexShipment = await createFedexShipmentLoc(bookingData);
+        const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
+        const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
 
-
-
-      bookingData.logisticCompanyTrackingNum = trackingNumber;
-      bookingData.label = label
-      bookingData.subTotal = amount;
-      bookingData.total = amount;
-      bookingData.paymentConfirmed = true;
-      bookingData.bookingStatusId = status.id;
-      bookingData.save();
-
-      for (let i = 0; i < bookingData.packages.length; i++) {
-        const pkg = bookingData.packages[i];
-        await pkg.update({
-          logisticCompanyTrackingNum: trackingNumber,
-          fedexLabel: label
-        })
-      }
-
-
-      const outObj = {
-        logisticCompanyTrackingNum: [
-          { trackingNumber: trackingNumber }
-        ],
-        label: [
-          { label: label }
-        ]
-      };
-
-
-      const response = returnFunction(
-        "1",
-        "Payment successfully Done",
-        outObj,
-        ""
-      );
-      return res.json(response);
-    } else if (bookingData.bookingTypeId == 1) {
-      const fedexShipment = await createFedexShipmentInt(bookingData);
-
-      console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
-
-      // Check if fedexShipment is a valid array and has elements
-      if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
-        const extractedShipments = fedexShipment.map((shipment) => {
-          const transactionShipment = shipment.output.transactionShipments[0];
-          return {
-            trackingNumber:
-              transactionShipment.pieceResponses[0].trackingNumber,
-            label:
-              transactionShipment.pieceResponses[0].packageDocuments[0].url,
-          };
-        });
-
-        // If bookingData needs to store only the first shipment
-        bookingData.logisticCompanyTrackingNum =
-          extractedShipments.map((track) => ({
-            trackingNumber: track.trackingNumber
-          }));
-        bookingData.label = extractedShipments.map((shipment) => ({
-          label: shipment.label
-        }));
+        bookingData.logisticCompanyTrackingNum = trackingNumber;
+        bookingData.label = label
+        bookingData.subTotal = amount;
+        bookingData.total = amount;
         bookingData.paymentConfirmed = true;
         bookingData.bookingStatusId = status.id;
-        await bookingData.save();
+        bookingData.save();
 
         for (let i = 0; i < bookingData.packages.length; i++) {
           const pkg = bookingData.packages[i];
           await pkg.update({
-            logisticCompanyTrackingNum: extractedShipments[i].trackingNumber,
-            fedexLabel: extractedShipments[i].label
+            logisticCompanyTrackingNum: trackingNumber,
+            fedexLabel: label
           })
         }
 
-        let outObj = {
-          logisticCompanyTrackingNum: bookingData.logisticCompanyTrackingNum,
-          label: extractedShipments,
-          //allShipments: extractedShipments, // Optionally return all extracted shipments
+        const outObj = {
+          logisticCompanyTrackingNum: [
+            { trackingNumber: trackingNumber }
+          ],
+          label: [
+            { label: label }
+          ]
         };
 
         const response = returnFunction(
@@ -8471,7 +8409,70 @@ async function intentGet(req, res) {
           ""
         );
         return res.json(response);
+      } catch (fedexErr) {
+        console.error("FedEx local shipment failed, confirming payment without shipment:", fedexErr.message);
+        bookingData.paymentConfirmed = true;
+        bookingData.bookingStatusId = status.id;
+        await bookingData.save();
+        return res.json(returnFunction("1", "Payment successfully Done", {}, ""));
       }
+    } else if (bookingData.bookingTypeId == 1) {
+      try {
+        const fedexShipment = await createFedexShipmentInt(bookingData);
+
+        console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
+
+        // Check if fedexShipment is a valid array and has elements
+        if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
+          const extractedShipments = fedexShipment.map((shipment) => {
+            const transactionShipment = shipment.output.transactionShipments[0];
+            return {
+              trackingNumber:
+                transactionShipment.pieceResponses[0].trackingNumber,
+              label:
+                transactionShipment.pieceResponses[0].packageDocuments[0].url,
+            };
+          });
+
+          bookingData.logisticCompanyTrackingNum =
+            extractedShipments.map((track) => ({
+              trackingNumber: track.trackingNumber
+            }));
+          bookingData.label = extractedShipments.map((shipment) => ({
+            label: shipment.label
+          }));
+          bookingData.paymentConfirmed = true;
+          bookingData.bookingStatusId = status.id;
+          await bookingData.save();
+
+          for (let i = 0; i < bookingData.packages.length; i++) {
+            const pkg = bookingData.packages[i];
+            await pkg.update({
+              logisticCompanyTrackingNum: extractedShipments[i].trackingNumber,
+              fedexLabel: extractedShipments[i].label
+            })
+          }
+
+          let outObj = {
+            logisticCompanyTrackingNum: bookingData.logisticCompanyTrackingNum,
+            label: extractedShipments,
+          };
+
+          const response = returnFunction(
+            "1",
+            "Payment successfully Done",
+            outObj,
+            ""
+          );
+          return res.json(response);
+        }
+      } catch (fedexErr) {
+        console.error("FedEx international shipment failed, confirming payment without shipment:", fedexErr.message);
+      }
+      bookingData.paymentConfirmed = true;
+      bookingData.bookingStatusId = status.id;
+      await bookingData.save();
+      return res.json(returnFunction("1", "Payment successfully Done", {}, ""));
     }
   } else {
 

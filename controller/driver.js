@@ -728,7 +728,6 @@ async function login(req, res) {
     { id: userData.id, email: userData.email, dvToken: dvToken },
     process.env.JWT_ACCESS_SECRET
   );
-  console.log("ACCESS-TOKEN=======================>",accessToken);
   //Adding the online clients to reddis DB for validation process
   redis_Client.hSet(`tsh${userData.id}`, dvToken, accessToken);
   let output = loginData(userData, accessToken, online_status, dvToken);
@@ -1193,7 +1192,7 @@ async function jobsByDateFilter(req, res) {
     attributes: ["vehicleTypeId", "driverTypeId"],
   });
   console.log("driverData====================>",driverData)
-   const dt = date ? moment(date).format("YYYY-MM-DD") : "";
+   const dt = date ? new Date(date).toISOString().split("T")[0] : "";
   const vehicleData = await vehicleType.findByPk(driverData.vehicleTypeId, {
     attributes: ["weightCapacity", "volumeCapacity"],
   });
@@ -2910,7 +2909,7 @@ let filterBookingsOnCapacity = async (
 };
 // Booking query with date input
 async function getBookings(dt, userId) {
-  dt = dt ? moment(dt).format("YYYY-MM-DD") : "";
+  dt = dt ? new Date(dt).toISOString().split("T")[0] : "";
   console.log("get Booking Date=================>",dt)
 
 const checkDeliveryBooking = await booking.findAll({
@@ -3120,7 +3119,11 @@ async function getDriverEarning(bookingId, driverId, type) {
     attributes: ["id"],
   });
   console.log("");
-  
+
+  if (!bookingData.dropoffAddress) {
+    return 0;
+  }
+
   let distance = await getDistance(
     bookingData.deliveryWarehouse.addressDB.lat,
     bookingData.deliveryWarehouse.addressDB.lng,

@@ -1,0 +1,28 @@
+{
+  "development": {
+    "username": "root",
+    "password": null,
+    "database": "shipping_hack",
+    "host": "127.0.0.1",
+    "port": 3306,
+    "dialect": "mysql",
+    "dialectOptions": {
+      "multipleStatements": true
+    },
+    "logging": false
+  },
+  "staging": {
+    "use_env_variable": "DATABASE_URL",
+    "dialect": "mysql",
+    "dialectOptions": { "multipleStatements": true },
+    "logging": false,
+    "pool": { "max": 10, "min": 2, "acquire": 30000, "idle": 10000 }
+  },
+  "production": {
+    "use_env_variable": "DATABASE_URL",
+    "dialect": "mysql",
+    "dialectOptions": { "multipleStatements": true },
+    "logging": false,
+    "pool": { "max": 10, "min": 2, "acquire": 30000, "idle": 10000 }
+  }
+}

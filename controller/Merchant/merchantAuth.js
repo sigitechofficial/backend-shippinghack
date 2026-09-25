@@ -279,7 +279,6 @@ async function sendOTP(req, res) {
         OTP,
       };
       let html = registerUserEmail(emailData);
-      console.log("process.env.EMAIL_USERNAME",process.env.EMAIL_USERNAME)
       transporter.sendMail(
         {
           from: process.env.EMAIL_USERNAME, // sender address
