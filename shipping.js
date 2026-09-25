@@ -90,6 +90,21 @@ const storage = require('./utils/storage');
 const barcodeUtil = require('./utils/barcode');
 const nodePath = require('path');
 
+// Normalize messy asset paths stored in the DB before they hit the /Public
+// route. Historic rows use inconsistent forms — a leading slash
+// ("/Public/Categories/x.png" → the app builds "…//Public/…"), lowercase
+// ("public/x.png"), or duplicate slashes — none of which match the
+// case-sensitive "/Public" mount and so 404'd. Rewrite any request whose path
+// begins with (optionally repeated) "/public" in any case to the canonical
+// "/Public/…" with internal double slashes collapsed.
+app.use((req, res, next) => {
+  const m = req.url.match(/^\/+public(\/.*)$/i);
+  if (m) {
+    req.url = '/Public' + m[1].replace(/\/{2,}/g, '/');
+  }
+  next();
+});
+
 // True when a storage/read error means "object does not exist" (S3 NoSuchKey /
 // 404 metadata, or local ENOENT) as opposed to a real failure.
 function isNotFound(err) {
