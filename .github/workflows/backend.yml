@@ -1,12 +1,13 @@
-name: CI/CD Workflow
+name: CI/CD Workflow (legacy FTP — dormant)
 
+# LEGACY: deploys to the retired cPanel/FTP host (ftp.theshippinghack.com).
+# The project now deploys to AWS via .github/workflows/aws-deploy.yml.
+# Auto-triggers are DISABLED so this never runs by accident onto the old host.
+# It is fully preserved and can be re-activated any time:
+#   - manually via the "Run workflow" button (workflow_dispatch), or
+#   - by re-adding a `push:` branch trigger below if the old host is revived.
 on:
-  push:
-    branches:
-      - testing
   workflow_dispatch:
-    branches:
-      - main
 
 jobs:
   build:
