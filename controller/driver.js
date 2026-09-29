@@ -2221,15 +2221,32 @@ async function deliveredDelivery(req, res) {
     description: "Delivery Driver Earnings",
   });
   const adminEarning = await wallet.sum("amount", { where: { bookingId } });
+  // The super-admin email differs per environment (staging was renamed to
+  // admin@theshippinghack.com; local DBs still have admin@shippinghack.com),
+  // so match any known form instead of one hardcoded address.
+  const adminEmails = [
+    process.env.ADMIN_EMAIL,
+    "admin@theshippinghack.com",
+    "admin@shippinghack.com",
+  ].filter(Boolean);
   const admin = await warehouse.findOne({
-    where: { email: "admin@shippinghack.com" },
+    where: {
+      [Op.or]: [{ email: adminEmails }, { companyName: "Super Admin" }],
+    },
+    order: [["id", "ASC"]],
   });
-  await wallet.create({
-    amount: -1 * adminEarning,
-    bookingId: bookingId,
-    adminId: admin.id,
-    description: "Admin Earning",
-  });
+  if (admin) {
+    await wallet.create({
+      amount: -1 * adminEarning,
+      bookingId: bookingId,
+      adminId: admin.id,
+      description: "Admin Earning",
+    });
+  } else {
+    console.warn(
+      `deliveredDelivery: no admin warehouse found, skipping Admin Earning for booking ${bookingId}`
+    );
+  }
 
   //  res.json({bookingData})
 
