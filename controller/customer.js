@@ -7525,7 +7525,7 @@ async function downloadLabel(req, res) {
     returnFunction(
       "1",
       "Booking Label",
-      { Url: orders.label, labels: normalizeLabels(orders.label) },
+      { Url: decodeJsonColumn(orders.label), labels: normalizeLabels(orders.label) },
       ""
     )
   );
@@ -7911,17 +7911,23 @@ async function checkoutSessionsCheck(req, res) {
 }
 
 //========================Paid booking finalisation (webhook + confirmCheckout)========================//
+// On staging (RDS) the JSON `label` column comes back as its raw JSON text, e.g.
+// "\"https://...\"" or "[{\"label\":...}]", instead of the parsed value.
+function decodeJsonColumn(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!/^["[{]/.test(trimmed)) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
 // booking.label is a plain URL string for local (type 6) bookings, an array of
 // { label } for international (type 1), and null until the FedEx shipment exists.
 function normalizeLabels(label) {
-  let value = label;
-  if (typeof value === "string" && value.trim().startsWith("[")) {
-    try {
-      value = JSON.parse(value);
-    } catch {
-      return [];
-    }
-  }
+  const value = decodeJsonColumn(label);
   if (!value) return [];
   if (typeof value === "string") return [{ label: value }];
   if (Array.isArray(value)) return value.filter((entry) => entry && entry.label);
