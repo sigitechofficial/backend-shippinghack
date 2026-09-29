@@ -5140,6 +5140,33 @@ router.put('/deletecard',validateToken, asyncMiddleware(userController.deletecar
  *                   example: Error details
  */
 router.post('/downloadLabel', validateToken, asyncMiddleware(userController.downloadLabel));
+/**
+ * @swagger
+ * /customer/confirmCheckout:
+ *   post:
+ *     tags:
+ *       - Customer --> Drawer
+ *     summary: Confirm a Stripe Checkout payment and return the booking label
+ *     description: Verifies the Checkout session is paid, finalises the booking (idempotent) and returns its label URLs. Used by the payment-success page so it doesn't depend on the webhook.
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               sessionId:
+ *                 type: string
+ *               bookingId:
+ *                 type: integer
+ */
+router.post('/confirmCheckout', validateToken, asyncMiddleware(userController.confirmCheckout));
 //---------------------------------------------------
 router.post('/makepaymentbynewcard', validateToken, asyncMiddleware(userController.makepaymentbynewcard));
 //

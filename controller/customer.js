@@ -7509,11 +7509,25 @@ async function payment(req, res) {
 //Fetch Shopify Orders
 async function downloadLabel(req, res) {
   const { bookingId } = req.body;
-  const orders = await booking.findByPk(bookingId);
-  console.log("🚀 ~ downloadLabel ~ orders:", orders);
-  // Respond with the fetched Orders
+  if (!bookingId) {
+    return res.json(returnFunction("0", "", {}, "Order not found"));
+  }
+  const orders = await booking.findOne({
+    where: { id: bookingId, customerId: req.user.id },
+    attributes: ["id", "label"],
+  });
+  if (!orders) {
+    return res.json(returnFunction("0", "", {}, "Order not found"));
+  }
+  // Url keeps the stored shape (the customer app reads it as a string for local
+  // orders); labels is always an array of { label }, empty until the label exists.
   return res.json(
-    returnFunction("1", "Booking Label", { Url: orders.label }, "")
+    returnFunction(
+      "1",
+      "Booking Label",
+      { Url: orders.label, labels: normalizeLabels(orders.label) },
+      ""
+    )
   );
 }
 //! Shopify API's Controllers
@@ -7896,92 +7910,100 @@ async function checkoutSessionsCheck(req, res) {
   return res.json(returnFunction("1", "Session Created", session));
 }
 
-//========================Stripe Webhooks for Session Completed========================//
-async function stripeWebhook(req, res) {
-  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!endpointSecret) {
-    console.error('STRIPE_WEBHOOK_SECRET is not configured');
-    return res.status(500).send('Webhook secret not configured');
+//========================Paid booking finalisation (webhook + confirmCheckout)========================//
+// booking.label is a plain URL string for local (type 6) bookings, an array of
+// { label } for international (type 1), and null until the FedEx shipment exists.
+function normalizeLabels(label) {
+  let value = label;
+  if (typeof value === "string" && value.trim().startsWith("[")) {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return [];
+    }
   }
-  const sig = req.headers['stripe-signature'];
-  let event;
+  if (!value) return [];
+  if (typeof value === "string") return [{ label: value }];
+  if (Array.isArray(value)) return value.filter((entry) => entry && entry.label);
+  return [];
+}
 
-  try {
+// Records the payment and creates the FedEx shipment/label for a paid booking.
+// Safe to call more than once (Stripe retries, webhook + success page both firing):
+// an existing label is returned as-is and payment rows are only written once.
+async function finalizePaidBooking(bookingID, amount) {
+  const bookingData = await booking.findOne({
+    where: { id: bookingID },
+    include: [
+      {
+        model: addressDBS,
+        as: "pickupAddress",
+        attributes: [
+          "streetAddress",
+          "building",
+          "floor",
+          "apartment",
+          "district",
+          "city",
+          "province",
+          "country",
+          "postalCode",
+        ],
+      },
+      {
+        model: addressDBS,
+        as: "dropoffAddress",
+        attributes: [
+          "streetAddress",
+          "building",
+          "floor",
+          "apartment",
+          "district",
+          "city",
+          "province",
+          "country",
+          "postalCode",
+        ],
+      },
+      {
+        model: package,
+        attributes: {
+          exclude: [
+            "barcode",
+            "total",
+            "status",
+            "createdAt",
+            "updatedAt",
+            "bookingId",
+            "ecommerceCompanyId",
+            "categoryId",
+          ],
+        },
+      },
+    ],
+  });
+  if (!bookingData) throw new CustomException("Booking not found");
 
-    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-    console.log("evernt=============================>", event)
+  const existingLabels = normalizeLabels(bookingData.label);
+  if (existingLabels.length > 0) return existingLabels;
 
-  } catch (err) {
-    console.log(`���️ Error deconstructing event: ${err.message}`);
-    return res.status(400).send(`Error deconstructing event: ${err.message}`);
-  }
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const bookingID = session.metadata.bookingId;
-    const realAmount = session.metadata.real_amount;
-    const amount = convertToDollars(realAmount);
-    const bookingUpdate = await booking.update(
+  const status = await bookingStatus.findOne({
+    where: {
+      title: "Ready to Ship",
+    },
+  });
+
+  if (!bookingData.paymentConfirmed) {
+    await booking.update(
       { paymentConfirmed: true },
       { where: { id: bookingID } }
     );
-    const bookingData = await booking.findOne({
-      where: { id: bookingID },
-      include: [
-        {
-          model: addressDBS,
-          as: "pickupAddress",
-          attributes: [
-            "streetAddress",
-            "building",
-            "floor",
-            "apartment",
-            "district",
-            "city",
-            "province",
-            "country",
-            "postalCode",
-          ],
-        },
-        {
-          model: addressDBS,
-          as: "dropoffAddress",
-          attributes: [
-            "streetAddress",
-            "building",
-            "floor",
-            "apartment",
-            "district",
-            "city",
-            "province",
-            "country",
-            "postalCode",
-          ],
-        },
-        {
-          model: package,
-          where: {
-            arrived: 'arrived',
-          },
-          attributes: {
-            exclude: [
-              "barcode",
-              "total",
-              "status",
-              "createdAt",
-              "updatedAt",
-              "bookingId",
-              "ecommerceCompanyId",
-              "categoryId",
-            ],
-          },
-        },
-      ],
-    });
-    const status = await bookingStatus.findOne({
-      where: {
-        title: "Ready to Ship",
-      },
-    });
+  }
+
+  const historyExists = await bookingHistory.findOne({
+    where: { bookingId: bookingID, bookingStatusId: status.id },
+  });
+  if (!historyExists) {
     let dt = Date.now();
     let DT = new Date(dt);
     let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1
@@ -7993,114 +8015,150 @@ async function stripeWebhook(req, res) {
       bookingId: bookingID,
       bookingStatusId: status.id,
     });
-    // Call function to create FedEx shipment and schedule pickup
-    console.log(" Fedex local function Call------------>",bookingData.customerId);
+  }
 
+  const walletExists = await wallet.findOne({
+    where: { bookingId: bookingID, description: "User Paid" },
+  });
+  if (!walletExists) {
     await wallet.create({
       amount: amount,
       bookingId: bookingID,
       userId: bookingData.customerId,
       description: "User Paid",
     });
+  }
 
-    if (bookingData.bookingTypeId == 6) {
-      const fedexShipment = await createFedexShipmentLoc(bookingData);
-      const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
-      const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
+  // Call function to create FedEx shipment and schedule pickup
+  if (bookingData.bookingTypeId == 6) {
+    const fedexShipment = await createFedexShipmentLoc(bookingData);
+    const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
+    const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
 
+    bookingData.logisticCompanyTrackingNum = trackingNumber;
+    bookingData.label = label;
+    bookingData.subTotal = amount;
+    bookingData.total = amount;
+    bookingData.paymentConfirmed = true;
+    bookingData.bookingStatusId = status.id;
+    await bookingData.save();
 
+    for (let i = 0; i < bookingData.packages.length; i++) {
+      const pkg = bookingData.packages[i];
+      await pkg.update({
+        logisticCompanyTrackingNum: trackingNumber,
+        fedexLabel: label
+      })
+    }
+    return normalizeLabels(label);
+  }
 
-      bookingData.logisticCompanyTrackingNum = trackingNumber;
-      bookingData.label = label
-      bookingData.subTotal = amount;
-      bookingData.total = amount;
-      bookingData.bookingStatusId = status.id;
-      bookingData.save();
-
-      for (let i = 0; i < bookingData.packages.length; i++) {
-        const pkg = bookingData.packages[i];
-        await pkg.update({
-          logisticCompanyTrackingNum: trackingNumber,
-          fedexLabel: label
-        })
-      }
-
-
-      const outObj = {
-        logisticCompanyTrackingNum: [
-          { trackingNumber: trackingNumber }
-        ],
-        label: [
-          { label: label }
-        ]
+  if (bookingData.bookingTypeId == 1) {
+    const fedexShipment = await createFedexShipmentInt(bookingData);
+    if (!Array.isArray(fedexShipment) || fedexShipment.length === 0) {
+      throw new CustomException("FedEx shipment could not be created");
+    }
+    const extractedShipments = fedexShipment.map((shipment) => {
+      const transactionShipment = shipment.output.transactionShipments[0];
+      return {
+        trackingNumber:
+          transactionShipment.pieceResponses[0].trackingNumber,
+        label:
+          transactionShipment.pieceResponses[0].packageDocuments[0].url,
       };
+    });
 
+    bookingData.logisticCompanyTrackingNum =
+      extractedShipments.map((track) => ({
+        trackingNumber: track.trackingNumber
+      }));
+    bookingData.label = extractedShipments.map((shipment) => ({
+      label: shipment.label
+    }));
+    bookingData.paymentConfirmed = true;
+    bookingData.bookingStatusId = status.id;
+    await bookingData.save();
 
-      const response = returnFunction(
-        "1",
-        "Payment successfully Done",
-        outObj,
-        ""
+    for (let i = 0; i < bookingData.packages.length; i++) {
+      const pkg = bookingData.packages[i];
+      await pkg.update({
+        logisticCompanyTrackingNum: extractedShipments[i].trackingNumber,
+        fedexLabel: extractedShipments[i].label
+      })
+    }
+    return normalizeLabels(bookingData.label);
+  }
+
+  return [];
+}
+
+//========================Stripe Webhooks for Session Completed========================//
+async function stripeWebhook(req, res) {
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!endpointSecret) {
+    console.error('STRIPE_WEBHOOK_SECRET is not configured');
+    return res.status(500).send('Webhook secret not configured');
+  }
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+  } catch (err) {
+    console.log(`Error deconstructing event: ${err.message}`);
+    return res.status(400).send(`Error deconstructing event: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    try {
+      await finalizePaidBooking(
+        session.metadata.bookingId,
+        convertToDollars(session.metadata.real_amount)
       );
-      return res.json(response);
-    } else if (bookingData.bookingTypeId === 1) {
-      console.log("Consolidation is false=====================>")
-      const fedexShipment = await createFedexShipmentInt(bookingData);
-
-      console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
-
-      if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
-        const extractedShipments = fedexShipment.map((shipment) => {
-          const transactionShipment = shipment.output.transactionShipments[0];
-          return {
-            trackingNumber:
-              transactionShipment.pieceResponses[0].trackingNumber,
-            label:
-              transactionShipment.pieceResponses[0].packageDocuments[0].url,
-          };
-        });
-
-        // If bookingData needs to store only the first shipment
-        bookingData.logisticCompanyTrackingNum =
-          extractedShipments.map((track) => ({
-            trackingNumber: track.trackingNumber
-          }));
-        bookingData.label = extractedShipments.map((shipment) => ({
-          label: shipment.label
-        }));
-        bookingData.bookingStatusId = status.id;
-        await bookingData.save();
-
-
-        for (let i = 0; i < bookingData.packages.length; i++) {
-          const pkg = bookingData.packages[i];
-          await pkg.update({
-            logisticCompanyTrackingNum: extractedShipments[i].trackingNumber,
-            fedexLabel: extractedShipments[i].label
-          })
-        }
-
-        let outObj = {
-          logisticCompanyTrackingNum: extractedShipments.map((track) => ({
-            trackingNumber: track.trackingNumber
-          })),
-          label: extractedShipments.map((shipment) => ({
-            label: shipment.label
-          })),
-          //allShipments: extractedShipments, // Optionally return all extracted shipments
-        };
-
-        const response = returnFunction(
-          "1",
-          "Payment successfully Done",
-          outObj,
-          ""
-        );
-        return res.json(response);
-      }
+    } catch (err) {
+      // Non-2xx makes Stripe retry; finalizePaidBooking is idempotent.
+      console.error(`stripeWebhook: booking ${session.metadata.bookingId} not finalised: ${err.message}`);
+      return res.status(500).send('Booking could not be finalised');
     }
   }
 
+  return res.json({ received: true });
+}
+
+// Called by the payment-success page so the label doesn't depend on the webhook arriving.
+async function confirmCheckout(req, res) {
+  const { sessionId, bookingId } = req.body;
+  if (!sessionId || !bookingId) {
+    return res.json(returnFunction("0", "", {}, "Missing payment session"));
+  }
+
+  const found = await booking.findOne({
+    where: { id: bookingId, customerId: req.user.id },
+    attributes: ["id"],
+  });
+  if (!found) {
+    return res.json(returnFunction("0", "", {}, "Order not found"));
+  }
+
+  let session;
+  try {
+    session = await stripe.checkout.sessions.retrieve(sessionId);
+  } catch (err) {
+    return res.json(returnFunction("0", "", {}, "Unable to verify payment"));
+  }
+  if (String(session?.metadata?.bookingId) !== String(bookingId)) {
+    return res.json(returnFunction("0", "", {}, "Payment does not match this order"));
+  }
+  if (session.payment_status !== "paid") {
+    return res.json(returnFunction("0", "", {}, "Payment is still pending"));
+  }
+
+  const labels = await finalizePaidBooking(
+    bookingId,
+    convertToDollars(session.metadata.real_amount)
+  );
+  return res.json(returnFunction("1", "Booking Label", { labels }, ""));
 }
 
 
@@ -8594,6 +8652,7 @@ module.exports = {
   retrieveSession,
   intentGet,
   stripeWebhook,
+  confirmCheckout,
   trackFedexOrder
 };
 
