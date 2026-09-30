@@ -99,6 +99,7 @@ const {
 const socialLinks = socialMediaLinks();
 const { attachment } = require("../helper/attactments");
 const deliveredMail = require("../helper/orderDelivery");
+const { round2, driverBalance } = require("../utils/ledger");
 const attach = attachment();
 // Defining the account for sending email
 const transporter = nodemailer.createTransport({
@@ -2568,27 +2569,8 @@ async function getWallet(req, res) {
     ],
   });
 
-  const sumOfEarnings = await wallet.findAll({
-    where: { userId },
-    attributes: [[sequelize.fn("SUM", sequelize.col("amount")), "Sum"]],
-  });
-
-  const Paid = await paymentRequests.findAll({
-    where: { userId, type: "paid", status: "done" },
-    attributes: [[sequelize.fn("SUM", sequelize.col("amount")), "paid"]],
-  });
-
-  //return res.json(Paid)
-
-  let total =
-    sumOfEarnings[0].dataValues.Sum === null
-      ? "0.00"
-      : sumOfEarnings[0].dataValues.Sum;
-  total = -1 * parseFloat(total);
-  let paid =
-    Paid[0].dataValues.paid === null ? "0.00" : Paid[0].dataValues.paid;
-
-  let balance = total - parseFloat(paid);
+  // available = earned − paid − pending withdraw requests
+  const balance = await driverBalance(userId);
   let paymentRequestsData = [];
   let obj = {};
 
@@ -2605,8 +2587,8 @@ async function getWallet(req, res) {
   });
 
   const tmpObj = {
-    totalEarning: `${total}`,
-    availableBalance: `${balance}`,
+    totalEarning: `${balance.earned}`,
+    availableBalance: `${balance.available}`,
     bank: userData.banks[0] ?? {
       id: 0,
       bankName: "",
@@ -2660,43 +2642,20 @@ async function updateBank(req, res) {
 
 async function sendWithdrawRequest(req, res) {
   const userId = req.user.id;
-  const { amount } = req.body;
-  // check balance and put limit
-  const sumOfEarnings = await wallet.findAll({
-    where: { userId },
-    attributes: [[sequelize.fn("SUM", sequelize.col("amount")), "Sum"]],
-  });
-
-  const Paid = await paymentRequests.findAll({
-    where: { userId, type: "paid", status: "done" },
-    attributes: [[sequelize.fn("SUM", sequelize.col("amount")), "paid"]],
-  });
-  //return res.json(Paid)
-  let total =
-    sumOfEarnings[0].dataValues.Sum === null
-      ? "0.00"
-      : sumOfEarnings[0].dataValues.Sum;
-  total = -1 * parseFloat(total);
-  let paid =
-    Paid[0].dataValues.paid === null ? "0.00" : Paid[0].dataValues.paid;
-  let balance = total - parseFloat(paid);
-  if (amount > balance)
-    throw CustomException(
-      "The requested amount is greater than balance",
-      "Please lower your amount amount and try again"
-    );
-  const Paid_Pending = await paymentRequests.findAll({
-    where: { userId },
-    attributes: [[sequelize.fn("SUM", sequelize.col("amount")), "paid"]],
-  });
-  let paid_pending =
-    Paid[0].dataValues.paid === null ? "0.00" : Paid[0].dataValues.paid;
-  let balance_pending = total - parseFloat(paid_pending);
-  if (amount > balance_pending)
-    throw CustomException(
-      "Few requests are pending approval and entered amount is greater than pending balance ",
-      "Please lower your amount amount and try again"
-    );
+  const amount = round2(req.body.amount);
+  if (!(amount > 0)) {
+    const message = "Please enter an amount greater than 0";
+    throw new CustomException(message, message);
+  }
+  // available = earned − paid − pending withdraw requests
+  const balance = await driverBalance(userId);
+  if (amount > balance.available) {
+    const message =
+      balance.pending > 0
+        ? `You already have pending withdraw requests. You can request up to ${balance.available.toFixed(2)} more.`
+        : `The requested amount is greater than your available balance (${balance.available.toFixed(2)}).`;
+    throw new CustomException(message, message);
+  }
 
   let dt = Date.now();
   let DT = new Date(dt);
