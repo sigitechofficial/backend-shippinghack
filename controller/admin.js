@@ -4254,10 +4254,21 @@ async function graphData(req, res) {
     where: { paymentConfirmed: true },
     attributes: ["createdAt", "total"],
   });
+  // business share per month = −(Admin Earning rows)
+  const adminEarningRows = await wallet.findAll({
+    where: { description: "Admin Earning" },
+    attributes: ["createdAt", "amount"],
+  });
+  const adminEarningBetween = (from, to) =>
+    (-adminEarningRows
+      .filter((r) => from < Date.parse(r.createdAt) && Date.parse(r.createdAt) < to)
+      .reduce((sum, r) => sum + parseFloat(r.amount), 0)
+    ).toFixed(2);
   let months = [],
     usersWithMonths = [],
     bookingsWithMonths = [],
-    earningsWithMonths = [];
+    earningsWithMonths = [],
+    adminEarningsWithMonths = [];
   let cDate = new Date();
   // Running a loop to get earnings for past 11 months
   for (let i = 0; i <= 11; i++) {
@@ -4293,6 +4304,9 @@ async function graphData(req, res) {
     usersWithMonths.push(monthlyUsers);
     bookingsWithMonths.push(monthlyBookings);
     earningsWithMonths.push(tmpObj);
+    adminEarningsWithMonths.push(
+      adminEarningBetween(Date.parse(oneMonthStart), Date.parse(oneMonthEnd))
+    );
     months.push(
       `${monthArr[oneMonthStart.getMonth()]} ${oneMonthStart.getFullYear()}`
     );
@@ -4316,6 +4330,9 @@ async function graphData(req, res) {
   );
   let tmpObj = currtotalEarnings.toFixed(2);
   earningsWithMonths.unshift(tmpObj);
+  adminEarningsWithMonths.unshift(
+    adminEarningBetween(Date.parse(startOfCurrentMonth), Date.parse(date))
+  );
   let monthlyUsers = userData.filter(
     (b) =>
       Date.parse(startOfCurrentMonth) < Date.parse(b.createdAt) &&
@@ -4337,6 +4354,7 @@ async function graphData(req, res) {
       usersWithMonths: usersWithMonths.reverse(),
       bookingsWithMonths: bookingsWithMonths.reverse(),
       earningsWithMonths: earningsWithMonths.reverse(),
+      adminEarningsWithMonths: adminEarningsWithMonths.reverse(),
       months: months.reverse(),
     },
     errors: "",
@@ -5713,6 +5731,21 @@ async function homePage(req, res) {
 });
   console.log("todayEarnings==============>", todayEarnings);
 
+  // Business share (paid − driver pay) = −(Admin Earning rows)
+  const monthStart = new Date(todayStart.getFullYear(), todayStart.getMonth(), 1);
+  const [adminEarningAll, adminEarningToday, adminEarningMonth] = await Promise.all([
+    wallet.sum("amount", { where: { description: "Admin Earning" } }),
+    wallet.sum("amount", {
+      where: {
+        description: "Admin Earning",
+        [Op.and]: [where(fn("DATE", col("createdAt")), { [Op.eq]: today_start })],
+      },
+    }),
+    wallet.sum("amount", {
+      where: { description: "Admin Earning", createdAt: { [Op.gte]: monthStart } },
+    }),
+  ]);
+
   const balance = await wallet.sum("amount");
   console.log("balance==============>", balance);
 
@@ -5747,6 +5780,9 @@ async function homePage(req, res) {
     numOfWarehouses,
     earnings,
     todayEarnings: todayEarnings === null ? "0.00" : todayEarnings,
+    adminEarnings: round2(-(adminEarningAll || 0)).toFixed(2),
+    todayAdminEarnings: round2(-(adminEarningToday || 0)).toFixed(2),
+    monthAdminEarnings: round2(-(adminEarningMonth || 0)).toFixed(2),
     balance: 1 * balance,
     driverEarnings: -1 * paidToDrivers,
     currencyUnit: defaultCurrencyUnit?.currencyUnit?.symbol || "USD",
