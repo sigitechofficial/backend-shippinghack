@@ -59,6 +59,7 @@ const {
   logisticCompanyCharges,
 } = require("../models");
 const getDistance = require("../utils/distanceCalculator");
+const { bandFor } = require("../utils/distanceBands");
 // The calculator returns km (the unit distance bands are stored in); the driver app
 // labels job distances in miles, so driver-facing distances are sent in miles.
 const KM_PER_MILE = 1.609344;
@@ -1913,6 +1914,13 @@ async function bookJobDelivery(req, res) {
   if (!bookingData)
     throw new CustomException("Booking Not Found", "Request booking not found");
 
+  // no distance band for this driver's vehicle type = no way to pay the driver
+  const { matched } = await getDriverEarning(bookingId, driverId, "delivery");
+  if (!matched) {
+    const message = "This delivery is outside the distance range priced for your vehicle type, so you can't accept it.";
+    throw new CustomException(message, message);
+  }
+
   // const onGoing = await onGoingOrder.findOne({
   //     where: { orderNumbers: { [Op.like]: '%'+bookingId+'%' } }
   // });
@@ -2149,6 +2157,19 @@ async function deliveredDelivery(req, res) {
   });
   if (!bookingData)
     throw new CustomException("Booking Not Found", "Request booking not found");
+
+  // driver pay comes from the vehicle type's distance band; refuse rather than pay $0
+  const { earning, matched } = await getDriverEarning(
+    bookingId,
+    bookingData.deliveryDriverId,
+    "delivery"
+  );
+  if (!matched) {
+    const message =
+      "No delivery price is set for this distance and vehicle type, so the delivery can't be completed yet. Please contact support.";
+    throw new CustomException(message, message);
+  }
+
   // update single booking
   await booking.update(
     {
@@ -2195,11 +2216,6 @@ async function deliveredDelivery(req, res) {
   }
 
   // update billing detail for delivery driver
-  let { earning } = await getDriverEarning(
-    bookingId,
-    bookingData.deliveryDriverId,
-    "delivery"
-  );
   await billingDetails.update(
     { deliveryDriverEarning: earning },
     { where: { bookingId } }
@@ -2822,14 +2838,13 @@ let filterBookingsOnCapacity = async (
         else if (ele.weight == "0.00" && ele.volume == "0.00")
           billableWeight = ele.weight;
 
-        let { earning, message } = await getDriverEarning(
+        let { earning, matched } = await getDriverEarning(
           ele.id,
           driverId,
           "delivery"
         );
-        console.log({ earning, message });
-        if (earning === 0.0 && message === "Distance Not in Range of Driver ") {
-        } else {
+        // jobs outside the driver's vehicle-type bands aren't offered
+        if (matched) {
           let driverDistance = (await distanceInMiles(
             driverLat,
             driverLng,
@@ -3055,10 +3070,12 @@ return dropoffBookingData;
 //     return {earning, driverPaymentSystemId : systemForCal.id};
 // };
 
-//! new Function for driver Earning
+//! Driver pay for a delivery = the driver's vehicle type base rate + the price of that
+// vehicle type's band the distance (delivery warehouse → drop-off, km) falls in.
+// `matched` is false (earning 0) when no band covers it — never paid silently.
+const NO_BAND_MESSAGE = "Distance Not in Range of Driver ";
 async function getDriverEarning(bookingId, driverId, type) {
-  let message = "";
-  let earning = 0.0;
+  const noBand = { earning: 0, message: NO_BAND_MESSAGE, matched: false };
   const bookingData = await booking.findByPk(bookingId, {
     include: [
       { model: addressDBS, as: "dropoffAddress", attributes: ["lat", "lng"] },
@@ -3080,33 +3097,28 @@ async function getDriverEarning(bookingId, driverId, type) {
     },
     attributes: ["id"],
   });
-  console.log("");
 
-  if (!bookingData.dropoffAddress) {
-    return 0;
+  if (
+    !bookingData?.dropoffAddress ||
+    !bookingData.deliveryWarehouse?.addressDB ||
+    !vehicleData?.vehicleType
+  ) {
+    return noBand;
   }
 
-  let distance = await getDistance(
+  const distance = await getDistance(
     bookingData.deliveryWarehouse.addressDB.lat,
     bookingData.deliveryWarehouse.addressDB.lng,
     bookingData.dropoffAddress.lat,
     bookingData.dropoffAddress.lng
   );
-  //  return res.json(vehicleData);
-  for (let range of vehicleData.vehicleType.distanceCharges) {
-    if (distance <= range.endValue && distance > range.startValue) {
-      earning =
-        vehicleData !== null
-          ? Number(vehicleData.vehicleType.baseRate) + Number(range.price)
-          : 0.0;
-    }
-  }
-  if (earning === 0.0) {
-    message = "Distance Not in Range of Driver ";
-  }
-
-  // return res.json(returnFunction('1', 'All group orders', {earning, message }, ''));
-  return { earning, message };
+  const band = bandFor(vehicleData.vehicleType.distanceCharges, distance);
+  if (!band) return noBand;
+  return {
+    earning: Number(vehicleData.vehicleType.baseRate) + Number(band.price),
+    message: "",
+    matched: true,
+  };
 }
 async function optimizeRoute(bookingData, driverLat, driverLng) {
   // Calculate the distances between the driver location and each booking location

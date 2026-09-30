@@ -2778,6 +2778,13 @@ async function assignOrderToDriver(req, res) {
           "Would you like to over-ride current driver?"
         )
       );
+    // the driver can only be paid if their vehicle type has a band for this distance
+    const { matched } = await getDriverEarning(bookingId, driverId, "delivery");
+    if (!matched) {
+      const message =
+        "This driver's vehicle type has no distance price for this delivery. Choose another driver or add a distance band in Pricing.";
+      return res.json(returnFunction("0", message, {}, message));
+    }
     await booking.update(
       {
         deliveryDriverId: driverId,
@@ -5812,6 +5819,11 @@ async function markDeliver(req, res) {
   let driverPay = null;
   if (assigned.deliveryDriverId) {
     driverPay = await getDriverEarning(bookingId, assigned.deliveryDriverId, "delivery");
+    if (!driverPay.matched) {
+      const message =
+        "The assigned driver's vehicle type has no distance price for this delivery. Add a distance band in Pricing first.";
+      return res.json(returnFunction("0", message, {}, message));
+    }
   }
 
   // completed: same fields as selfPickupDelivered (status=false = completed booking, still listed in myOrders)

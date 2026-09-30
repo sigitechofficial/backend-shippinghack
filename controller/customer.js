@@ -114,6 +114,7 @@ var CryptoJS = require("crypto-js");
 
 const { getDateAndTime } = require("../utils/helperFuncCompany");
 const { recordAdminEarning } = require("../utils/ledger");
+const { anyVehicleCovers } = require("../utils/distanceBands");
 // Defining the account for sending email
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -3349,6 +3350,26 @@ async function createOrderInt(req, res) {
   );
 }
 
+// Home delivery is only offered where a driver can be paid: at least one active vehicle
+// type needs a distance band covering the delivery warehouse → address distance.
+// Addresses without coordinates can't be priced, so they count as not covered.
+async function homeDeliveryCovered(deliveryWarehouse, newAddress, dropoffAddressId) {
+  const from = deliveryWarehouse?.addressDBId
+    ? await addressDBS.findByPk(deliveryWarehouse.addressDBId, { attributes: ["lat", "lng"] })
+    : null;
+  const to =
+    newAddress ||
+    (dropoffAddressId
+      ? await addressDBS.findByPk(dropoffAddressId, { attributes: ["lat", "lng"] })
+      : null);
+  if (!from?.lat || !from?.lng || !to?.lat || !to?.lng) {
+    console.warn("homeDeliveryCovered: warehouse or drop-off address has no coordinates");
+    return false;
+  }
+  const distance = await getDistance(from.lat, from.lng, to.lat, to.lng);
+  return anyVehicleCovers(distance);
+}
+
 async function dropOfAddress(req, res) {
   let {
     bookingId,
@@ -3363,6 +3384,19 @@ async function dropOfAddress(req, res) {
     where: { located: "rico" },
     attributes: ["id", "addressDBId"],
   });
+
+  if (!selfPickup) {
+    const covered = await homeDeliveryCovered(
+      deliveryWarehouse,
+      addNewAddress ? dropOffAddress : null,
+      dropoffAddressId
+    );
+    if (!covered) {
+      return res.json(
+        returnFunction("0", "", {}, "Sorry, we don't deliver to this address yet.")
+      );
+    }
+  }
 
   if (addNewAddress) {
     const dropOffAddressData = await addressDBS.create(dropOffAddress);
