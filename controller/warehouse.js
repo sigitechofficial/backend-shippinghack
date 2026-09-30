@@ -107,14 +107,12 @@ const {
   convertToBaseUnits,
 } = require("../utils/unitsManagement");
 const {
-  adminEarning,
   couponCheck,
   returnFunction,
   replaceEmptyStringsWithNull,
   customBarcodeGenerator,
   customMultipleInvoicesGenerator,
   customInvoiceOutputGenerator,
-  adminPercentage,
   getDateAndTime,
   calculateWeights,
   journeyTrack, calculateTotalValues

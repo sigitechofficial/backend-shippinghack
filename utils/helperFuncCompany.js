@@ -1,6 +1,6 @@
 // ! RECURRING FUNCTIONS FOR COMPANY CONTROLLERS
 //^ Requires for invoices
-const { booking, size, addressDBS, category, package ,generalCharges,coupon} = require("../models");
+const { booking, size, addressDBS, category, package ,coupon} = require("../models");
 const {currentAppUnitsId,unitsConversion,unitsSymbolsAndRates} = require('./unitsManagement');
 const { Op, where, or } = require("sequelize");
 const CustomException = require('../middleware/errorObject');
@@ -180,39 +180,6 @@ async function customMultipleInvoicesGenerator(id) {
 }
 
 
-
-//^ Function that will return Admin earning______________________________________
-async function adminEarning(total) {
-  try {
-    let charges = await generalCharges.findAll({
-      where: { [Op.or] : [{key: 'company'},{key: 'driver'}]  },
-      attributes: ['key','value']
-  });
-  let percentageFromCompany = charges[0].value;
-  let percentageFromDriver = charges[1].value;
-  let adminEarning =((percentageFromCompany + percentageFromDriver) / 100) * total;
-  return adminEarning; // admin earning
-  } catch (error) {
-    console.error(error);
-    throw new Error('Error! In Calculation Fuction');
-  }
-}
-
-async function adminPercentage() {
-  try {
-    let charges = await generalCharges.findAll({
-      where: { [Op.or] : [{key: 'company'},{key: 'driver'}]  },
-      attributes: ['key','value']
-  });
-  let percentageFromCompany = charges[0].value;
-  let percentageFromDriver = charges[1].value;
-  let total = percentageFromCompany + percentageFromDriver;
-  return total; // admin earning
-  } catch (error) {
-    console.error(error);
-    throw new Error('Error! In Calculation Fuction');
-  }
-}
 
 async function couponCheck(code, userId){
   const existCoupon = await coupon.findOne({where: {code: code, status: true}})
@@ -549,8 +516,6 @@ function calculateTotalValues(objectsArray) {
   return totals;
 }
 module.exports = {
-  adminPercentage,
-  adminEarning,
   returnFunction,
   getDistance,
   replaceEmptyStringsWithNull,
