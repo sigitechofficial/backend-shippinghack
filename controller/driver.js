@@ -59,6 +59,13 @@ const {
   logisticCompanyCharges,
 } = require("../models");
 const getDistance = require("../utils/distanceCalculator");
+// The calculator returns km (the unit distance bands are stored in); the driver app
+// labels job distances in miles, so driver-facing distances are sent in miles.
+const KM_PER_MILE = 1.609344;
+async function distanceInMiles(lat1, lng1, lat2, lng2) {
+  const km = await getDistance(lat1, lng1, lat2, lng2);
+  return parseFloat((km / KM_PER_MILE).toFixed(2));
+}
 // Importing Custom exception
 const CustomException = require("../middleware/errorObject");
 //importing redis
@@ -1315,13 +1322,13 @@ async function allAssociatedJobs(req, res) {
     await Promise.all(
       pickuped.map(async (ele) => {
         let { earning } = await getDriverEarning(ele.id, driverId, "delivery");
-        let driverDistance = (await getDistance(
+        let driverDistance = (await distanceInMiles(
           driverLat,
           driverLng,
           ele.dropoffAddress.lat,
           ele.dropoffAddress.lng
         ))
-          ? await getDistance(
+          ? await distanceInMiles(
               driverLat,
               driverLng,
               ele.dropoffAddress.lat,
@@ -1690,7 +1697,7 @@ async function bookingDetailsById(req, res) {
     if (requ.data != null) {
       online_status = true;
       console.log(requ.data.lat, requ.data.lng, orderLat, orderLng);
-      driver_distance = await getDistance(
+      driver_distance = await distanceInMiles(
         requ.data.lat,
         requ.data.lng,
         orderLat,
@@ -1707,7 +1714,7 @@ async function bookingDetailsById(req, res) {
     if (requ.data != null) {
       online_status = true;
       console.log(requ.data.lat, requ.data.lng, orderLat, orderLng);
-      driver_distance = await getDistance(
+      driver_distance = await distanceInMiles(
         requ.data.lat,
         requ.data.lng,
         orderLat,
@@ -2746,13 +2753,13 @@ let filterBookings = async (bookingData, driverId) => {
       else if (ele.weight == "0.00" && ele.volume == "0.00")
         billableWeight = ele.weight;
       let { earning } = await getDriverEarning(ele.id, driverId, "delivery");
-      let driverDistance = (await getDistance(
+      let driverDistance = (await distanceInMiles(
         driverLat,
         driverLng,
         ele.dropoffAddress.lat,
         ele.dropoffAddress.lng
       ))
-        ? await getDistance(
+        ? await distanceInMiles(
             driverLat,
             driverLng,
             ele.dropoffAddress.lat,
@@ -2823,13 +2830,13 @@ let filterBookingsOnCapacity = async (
         console.log({ earning, message });
         if (earning === 0.0 && message === "Distance Not in Range of Driver ") {
         } else {
-          let driverDistance = (await getDistance(
+          let driverDistance = (await distanceInMiles(
             driverLat,
             driverLng,
             ele.dropoffAddress.lat,
             ele.dropoffAddress.lng
           ))
-            ? await getDistance(
+            ? await distanceInMiles(
                 driverLat,
                 driverLng,
                 ele.dropoffAddress.lat,

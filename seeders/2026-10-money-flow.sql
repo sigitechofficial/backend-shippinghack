@@ -13,3 +13,9 @@ ALTER TABLE paymentRequests
 -- T6: FedEx shipping cost per booking (information only; filled when FedEx returns it)
 ALTER TABLE bookings
   ADD COLUMN shippingCost DECIMAL(10,2) NULL;
+
+-- T8: "mile" distance unit for the admin's KM/Miles setting. Distances are stored
+-- in km (the base unit, rate 1); 1 mile = 1.6093 km. Skipped if a "mi" unit exists.
+INSERT INTO units (type, name, symbol, status, conversionRate, deleted, createdAt, updatedAt)
+SELECT 'distance', 'mile', 'mi', 1, 1.6093, 0, NOW(), NOW() FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM units WHERE type = 'distance' AND symbol = 'mi');

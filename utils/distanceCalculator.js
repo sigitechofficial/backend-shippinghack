@@ -21,20 +21,21 @@ const CustomException = require("../middleware/errorObject");
 //         }
 // }
 
+// Straight-line (haversine) distance in km — the base distance unit that distance
+// bands (distanceCharges startValue/endValue) are stored in. The admin's KM/Miles
+// setting only changes how bands are entered and shown.
 module.exports = async function (userLat, userLng, orderLat, orderLng) {
-    const earth_radius = 6371;
-    const dLat = (Math.PI / 180) * (orderLat - userLat);
-    const dLon = (Math.PI / 180) * (orderLng - userLng);
+    const earth_radius = 6371; // km
+    const toRad = (deg) => (Math.PI / 180) * deg;
+    const dLat = toRad(orderLat - userLat);
+    const dLon = toRad(orderLng - userLng);
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((Math.PI / 180) * orderLat) *
-        Math.cos((Math.PI / 180) * orderLat) *
+      Math.cos(toRad(userLat)) *
+        Math.cos(toRad(orderLat)) *
         Math.sin(dLon / 2) *
         Math.sin(dLon / 2);
     const c = 2 * Math.asin(Math.sqrt(a));
-    const d = earth_radius * c; // d is in mles
-    const km = d * 1.60934; // coonvert miles into kms
+    const km = earth_radius * c;
     return parseFloat(km.toFixed(2));
 }
-
-   

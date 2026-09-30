@@ -2392,7 +2392,12 @@ async function getDistCharges(req, res) {
  *    2.3 Update distance charges
  */
 async function updateDistCharge(req, res) {
-  const { title, startValue, endValue, price, chargeId } = req.body;
+  let { title, startValue, endValue, price, chargeId } = req.body;
+  // same as addDistCharge: entered in the admin's distance unit, stored in km
+  const appUnitId = await currentAppUnitsId();
+  const units = await unitsSymbolsAndRates(appUnitId);
+  startValue = convertToBaseUnits(startValue, units.conversionRate.distance);
+  endValue = convertToBaseUnits(endValue, units.conversionRate.distance);
   distanceCharges
     .update({ title, startValue, endValue, price }, { where: { id: chargeId } })
     .then((data) => {
