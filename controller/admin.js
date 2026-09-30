@@ -107,6 +107,7 @@ const {
   convertToBaseUnits,
 } = require("../utils/unitsManagement");
 const { virtualBox } = require("./warehouse");
+const { round2, driverBalance, driverBalances } = require("../utils/ledger");
 const { title } = require("process");
 // Defining the account for sending email
 const transporter = nodemailer.createTransport({
@@ -738,16 +739,7 @@ async function approveDriver(req, res) {
 async function driverWallet(req, res) {
   //const {driverId} = req.body;
   const driverId = req.query.id;
-  //const defaultDistanceUnit = await defaultUnit.findOne({where: {type: 'distance', status: true}, attributes: ['symbol']})
-  const defaultCurrencyUnit = await appUnits.findOne({
-    where: {status: true },
-    include:{
-      model:units,
-      as:"currencyUnit",
-      attributes:['type','symbol']
-    },
-    attributes:[]
-  });
+  const currencySymbol = await currentCurrencySymbol();
   let userId = driverId;
   const userData = await user.findOne({
     where: { id: userId },
@@ -762,6 +754,10 @@ async function driverWallet(req, res) {
           "id",
           "amount",
           "type",
+          "status",
+          "method",
+          "reference",
+          "note",
           [
             sequelize.fn("date_format", sequelize.col("date"), "%m-%d-%Y"),
             "date",
@@ -772,77 +768,222 @@ async function driverWallet(req, res) {
     ],
   });
 
-  const sumOfEarnings = await wallet.findAll({
-    where: { userId },
-    attributes: [[sequelize.fn("SUM", sequelize.col("amount")), "Sum"]],
-  });
-  //return res.json(sumOfEarnings)
-  const Paid = await paymentRequests.findAll({
-    where: { userId, type: "withdraw", status: "done" },
-    attributes: [[sequelize.fn("SUM", sequelize.col("amount")), "paid"]],
-  });
-
-  let total =
-    sumOfEarnings[0].dataValues.Sum === null
-      ? "0.00"
-      : sumOfEarnings[0].dataValues.Sum;
-  total = -1 * parseFloat(total);
-  let paid =
-    Paid[0].dataValues.paid === null ? "0.00" : Paid[0].dataValues.paid;
-  //return res.json(paid)
-
-  let balance = total - parseFloat(paid);
-  let paymentRequestsData = [];
-  let obj = {};
-
-  userData.paymentRequests.map((ele) => {
-    obj = {
-      id: ele.id,
-      amount: `${defaultCurrencyUnit.symbol}` + ele.amount,
-      type: ele.type,
-      date: `${ele.date} ${ele.time}`,
-    };
-    paymentRequestsData.push(obj);
-  });
-  console.log(total, balance);
+  const balance = await driverBalance(userId);
+  const paymentRequestsData = userData.paymentRequests.map((ele) => ({
+    id: ele.id,
+    amount: `${currencySymbol}${ele.amount}`,
+    type: ele.type,
+    status: ele.status,
+    method: ele.method,
+    reference: ele.reference,
+    note: ele.note,
+    date: `${ele.dataValues.date} ${ele.dataValues.time}`,
+  }));
   const tmpObj = {
-    totalEarning: !total ? "0.00" : `${total}`,
-    availableBalance: !balance ? "0.00" : `${balance}`,
+    totalEarning: balance.earned.toFixed(2),
+    paid: balance.paid.toFixed(2),
+    pending: balance.pending.toFixed(2),
+    availableBalance: balance.available.toFixed(2),
     bank: userData.banks[0] ?? {},
     transactions: paymentRequestsData,
-    currencyUnit: defaultCurrencyUnit.currencyUnit.symbol,
+    currencyUnit: currencySymbol,
   };
 
   return res.json(returnFunction("1", "Wallet", tmpObj, ""));
 }
+
+async function currentCurrencySymbol() {
+  const current = await appUnits.findOne({
+    where: { status: true },
+    include: { model: units, as: "currencyUnit", attributes: ["symbol"] },
+    attributes: ["id"],
+  });
+  return current?.currencyUnit?.symbol || "$";
+}
+
+// Payouts are made outside the system (bank transfer or cash) and recorded here.
+const PAYOUT_METHODS = ["bank", "cash"];
+function payoutDetails({ method, reference, note }) {
+  if (!PAYOUT_METHODS.includes(method)) {
+    return { error: "Choose how the driver was paid: bank transfer or cash" };
+  }
+  reference = (reference || "").trim();
+  if (method === "bank" && !reference) {
+    return { error: "Enter the bank transfer reference" };
+  }
+  return { method, reference: reference || null, note: (note || "").trim() || null };
+}
+
+function payoutDateTime() {
+  const cDT = new Date();
+  return {
+    date: `${cDT.getFullYear()}-${("0" + (cDT.getMonth() + 1)).slice(-2)}-${("0" + cDT.getDate()).slice(-2)}`,
+    time: `${cDT.getHours()}:${cDT.getMinutes()}:${cDT.getSeconds()}`,
+  };
+}
+
+function overBalanceMessage(available) {
+  return `The amount is more than the driver's available balance (${available.toFixed(2)})`;
+}
+
 /*
-            6. Pay to driver
+            6. Pay to driver — record a payout made without a withdraw request
+               (POST /admin/driver/pay and POST /admin/driverpayout)
 */
 async function payToDriver(req, res) {
-  let { driverId, amount } = req.body;
-  let nowDate = Date.now();
-  let cDT = new Date(nowDate);
-  let date = `${cDT.getFullYear()}-${("0" + (cDT.getMonth() + 1)).slice(-2)}-${(
-    "0" + cDT.getDate()
-  ).slice(-2)}`;
-  let time = `${cDT.getHours()}:${cDT.getMinutes()}:${cDT.getSeconds()}`;
-  paymentRequests
-    .create({
-      amount,
-      status: "done",
-      type: "withdraw",
-      userId: driverId,
-      date,
-      time,
-    })
-    .then((data) => {
-      return res.json(returnFunction("1", "Paid to driver", {}, ""));
-    })
-    .catch((err) => {
-      return res.json(
-        returnFunction("0", "Internal server error", {}, `${err}`)
-      );
-    });
+  const { driverId, amount } = req.body;
+  const details = payoutDetails(req.body);
+  if (details.error) return res.json(returnFunction("0", "", {}, details.error));
+  const value = round2(amount);
+  if (!(value > 0)) {
+    return res.json(returnFunction("0", "", {}, "Enter an amount greater than 0"));
+  }
+  const driver = await user.findOne({
+    where: { id: driverId, userTypeId: 2 },
+    attributes: ["id"],
+  });
+  if (!driver) return res.json(returnFunction("0", "", {}, "Driver not found"));
+
+  const balance = await driverBalance(driverId);
+  if (value > balance.available) {
+    return res.json(returnFunction("0", "", {}, overBalanceMessage(balance.available)));
+  }
+  const payout = await paymentRequests.create({
+    amount: value,
+    status: "done",
+    type: "paid",
+    userId: driverId,
+    ...payoutDateTime(),
+    method: details.method,
+    reference: details.reference,
+    note: details.note,
+  });
+  return res.json(returnFunction("1", "Paid to driver", payout, ""));
+}
+
+/*
+            7. Driver payments — every driver's earned / paid / pending / available + bank
+*/
+async function driverPayments(req, res) {
+  const drivers = await user.findAll({
+    where: { userTypeId: 2, deletedAt: { [Op.is]: null } },
+    attributes: ["id", "firstName", "lastName", "email", "countryCode", "phoneNum", "status"],
+    include: [
+      {
+        model: bank,
+        required: false,
+        attributes: ["bankName", "accountName", "accountNumber"],
+      },
+    ],
+    order: [["id", "ASC"]],
+  });
+  const balances = await driverBalances(drivers.map((d) => d.id));
+  const rows = drivers.map((d) => ({
+    id: d.id,
+    name: [d.firstName, d.lastName].filter(Boolean).join(" "),
+    email: d.email,
+    phone: [d.countryCode, d.phoneNum].filter(Boolean).join(" "),
+    active: d.status,
+    bank: d.banks[0] || null,
+    ...balances[d.id],
+  }));
+  const totals = rows.reduce(
+    (t, r) => ({
+      earned: round2(t.earned + r.earned),
+      paid: round2(t.paid + r.paid),
+      pending: round2(t.pending + r.pending),
+      available: round2(t.available + r.available),
+    }),
+    { earned: 0, paid: 0, pending: 0, available: 0 }
+  );
+  return res.json(
+    returnFunction("1", "Driver payments", {
+      drivers: rows,
+      totals,
+      currencyUnit: await currentCurrencySymbol(),
+    }, "")
+  );
+}
+
+/*
+            8. Withdraw requests (pending) and payouts (paid) — ?status=pending|paid
+*/
+async function withdrawRequests(req, res) {
+  const filters = {
+    pending: [{ type: "request", status: "pending" }],
+    paid: [{ type: "paid", status: "done" }],
+  };
+  const or = filters[req.query.status] || [...filters.pending, ...filters.paid];
+  const rows = await paymentRequests.findAll({
+    where: { [Op.or]: or },
+    include: [
+      {
+        model: user,
+        attributes: ["id", "firstName", "lastName", "email"],
+        include: [
+          {
+            model: bank,
+            required: false,
+            attributes: ["bankName", "accountName", "accountNumber"],
+          },
+        ],
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+  });
+  const requests = rows.map((r) => ({
+    id: r.id,
+    driverId: r.userId,
+    driver: [r.user?.firstName, r.user?.lastName].filter(Boolean).join(" "),
+    email: r.user?.email,
+    bank: r.user?.banks?.[0] || null,
+    amount: r.amount,
+    type: r.type,
+    status: r.status,
+    method: r.method,
+    reference: r.reference,
+    note: r.note,
+    date: r.date,
+    time: r.time,
+    requestedAt: r.createdAt,
+  }));
+  return res.json(
+    returnFunction("1", "Withdraw requests", {
+      requests,
+      currencyUnit: await currentCurrencySymbol(),
+    }, "")
+  );
+}
+
+/*
+            9. Approve a withdraw request — the same row becomes the payout
+*/
+async function approveWithdrawRequest(req, res) {
+  const { requestId } = req.body;
+  const details = payoutDetails(req.body);
+  if (details.error) return res.json(returnFunction("0", "", {}, details.error));
+
+  const request = await paymentRequests.findOne({
+    where: { id: requestId, type: "request", status: "pending" },
+  });
+  if (!request) {
+    return res.json(returnFunction("0", "", {}, "Withdraw request not found or already paid"));
+  }
+  // `pending` already includes this request
+  const balance = await driverBalance(request.userId);
+  const available = round2(balance.available + Number(request.amount));
+  if (Number(request.amount) > available) {
+    return res.json(returnFunction("0", "", {}, overBalanceMessage(available)));
+  }
+  await request.update({
+    type: "paid",
+    status: "done",
+    ...payoutDateTime(),
+    method: details.method,
+    reference: details.reference,
+    note: details.note,
+  });
+  return res.json(returnFunction("1", "Withdraw request paid", request, ""));
 }
 
 // ! Module 4: Warehouse
@@ -6699,6 +6840,9 @@ module.exports = {
   approveDriver,
   driverWallet,
   payToDriver,
+  driverPayments,
+  withdrawRequests,
+  approveWithdrawRequest,
   // warehouses
   getAllWarehouse,
   warehouseDetails,

@@ -21,6 +21,19 @@ module.exports = (sequelize, DataTypes) =>{
             type: DataTypes.TIME,
             allowNull: true,
         },
+        // Payouts (type "paid"): how the admin paid the driver outside the system.
+        method: {
+            type: DataTypes.STRING(20), // "bank" | "cash"
+            allowNull: true,
+        },
+        reference: {
+            type: DataTypes.STRING(255),
+            allowNull: true,
+        },
+        note: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+        },
     });
     // paymentRequests.associate = (models)=>{
     //     paymentRequests.hasMany(models.driverDetail);

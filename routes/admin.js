@@ -1026,7 +1026,110 @@ router.put('/approvedriver', validateToken, checkPermission,  asyncMiddleware(ad
 
 router.get('/driver/wallet', validateToken, checkPermission, asyncMiddleware(adminController.driverWallet) ) 
 //5.  Get driver wallet
-router.post('/driver/pay', validateToken, checkPermission, asyncMiddleware(adminController.payToDriver) ) 
+router.post('/driver/pay', validateToken, checkPermission, asyncMiddleware(adminController.payToDriver) )
+
+//6. Driver payments (payouts are made outside the system and recorded here)
+/**
+ * @swagger
+ * /admin/driverpayments:
+ *   get:
+ *     tags:
+ *       - Admin --> Driver payments
+ *     summary: Every driver's earned / paid / pending / available balance and bank details
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: "data: { drivers: [{ id, name, email, phone, bank, earned, paid, pending, available, pendingRequests }], totals, currencyUnit }"
+ */
+router.get('/driverpayments', validateToken, checkPermission, asyncMiddleware(adminController.driverPayments))
+/**
+ * @swagger
+ * /admin/withdrawrequests:
+ *   get:
+ *     tags:
+ *       - Admin --> Driver payments
+ *     summary: Withdraw requests (pending) and payouts (paid)
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, paid]
+ *         description: Omit for both.
+ *     responses:
+ *       200:
+ *         description: "data: { requests: [{ id, driverId, driver, bank, amount, type, status, method, reference, note, date, time, requestedAt }], currencyUnit }"
+ */
+router.get('/withdrawrequests', validateToken, checkPermission, asyncMiddleware(adminController.withdrawRequests))
+/**
+ * @swagger
+ * /admin/withdrawrequest/approve:
+ *   put:
+ *     tags:
+ *       - Admin --> Driver payments
+ *     summary: Mark a pending withdraw request as paid (that row becomes the payout)
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               requestId: { type: integer }
+ *               method: { type: string, enum: [bank, cash] }
+ *               reference: { type: string, description: Required for bank transfers }
+ *               note: { type: string }
+ *     responses:
+ *       200:
+ *         description: "status 0 when not pending, missing details or more than the available balance"
+ */
+router.put('/withdrawrequest/approve', validateToken, checkPermission, asyncMiddleware(adminController.approveWithdrawRequest))
+/**
+ * @swagger
+ * /admin/driverpayout:
+ *   post:
+ *     tags:
+ *       - Admin --> Driver payments
+ *     summary: Record a payout made without a withdraw request
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               driverId: { type: integer }
+ *               amount: { type: number }
+ *               method: { type: string, enum: [bank, cash] }
+ *               reference: { type: string, description: Required for bank transfers }
+ *               note: { type: string }
+ *     responses:
+ *       200:
+ *         description: "status 0 when details are missing or the amount is more than the available balance"
+ */
+router.post('/driverpayout', validateToken, checkPermission, asyncMiddleware(adminController.payToDriver)) 
 
 // ! Module 4: Warehouses
 // 1.  Get all driver

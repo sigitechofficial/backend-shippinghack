@@ -2556,6 +2556,8 @@ async function getWallet(req, res) {
           "id",
           "amount",
           "type",
+          "status",
+          "method",
           [
             sequelize.fn("date_format", sequelize.col("date"), "%m-%d-%Y"),
             "date",
@@ -2594,7 +2596,9 @@ async function getWallet(req, res) {
     obj = {
       id: ele.id,
       amount: "$" + ele.amount,
-      type: ele.type,
+      type: ele.type, // "request" (pending) or "paid"
+      status: ele.status,
+      method: ele.method, // payouts: "bank" or "cash"
       date: `${ele.date} ${ele.time}`,
     };
     paymentRequestsData.push(obj);
