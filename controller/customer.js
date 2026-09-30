@@ -7937,6 +7937,8 @@ function normalizeLabels(label) {
 // Records the payment and creates the FedEx shipment/label for a paid booking.
 // Safe to call more than once (Stripe retries, webhook + success page both firing):
 // an existing label is returned as-is and payment rows are only written once.
+// The payment is recorded before the FedEx call, so if FedEx fails the booking is
+// still paid and "Ready to Ship" and a later call only retries the shipment.
 async function finalizePaidBooking(bookingID, amount) {
   const bookingData = await booking.findOne({
     where: { id: bookingID },
@@ -8000,10 +8002,9 @@ async function finalizePaidBooking(bookingID, amount) {
   });
 
   if (!bookingData.paymentConfirmed) {
-    await booking.update(
-      { paymentConfirmed: true },
-      { where: { id: bookingID } }
-    );
+    bookingData.paymentConfirmed = true;
+    bookingData.bookingStatusId = status.id;
+    await bookingData.save();
   }
 
   const historyExists = await bookingHistory.findOne({
@@ -8045,8 +8046,6 @@ async function finalizePaidBooking(bookingID, amount) {
     bookingData.label = label;
     bookingData.subTotal = amount;
     bookingData.total = amount;
-    bookingData.paymentConfirmed = true;
-    bookingData.bookingStatusId = status.id;
     await bookingData.save();
 
     for (let i = 0; i < bookingData.packages.length; i++) {
@@ -8081,8 +8080,6 @@ async function finalizePaidBooking(bookingID, amount) {
     bookingData.label = extractedShipments.map((shipment) => ({
       label: shipment.label
     }));
-    bookingData.paymentConfirmed = true;
-    bookingData.bookingStatusId = status.id;
     await bookingData.save();
 
     for (let i = 0; i < bookingData.packages.length; i++) {
@@ -8355,195 +8352,113 @@ async function retrieveSession(req, res) {
   }
 }
 
-//retrive Intent
-async function intentGet(req, res) {
-  const intentId = req.query.intentId;
-  //let intentID=intentId.toString()
-  console.log("🚀 ~ intentGet ~ intentId:", intentId)
-  const { bookingId, amount } = req.body
-  console.log("🚀 ~ intentGet ~ intentId:", intentId)
-
-  const intentFind = await stripeFunction.retriveIntent(intentId)
-  console.log("🚀 ~ intentGet ~ intentFind:", intentFind.status)
-  if (intentFind.status === "succeeded") {
-    const bookingData = await booking.findOne({
-      where: { id: bookingId },
-      include: [
-        {
-          model: addressDBS,
-          as: "pickupAddress",
-          attributes: [
-            "streetAddress",
-            "building",
-            "floor",
-            "apartment",
-            "district",
-            "city",
-            "province",
-            "country",
-            "postalCode",
-          ],
-        },
-        {
-          model: addressDBS,
-          as: "dropoffAddress",
-          attributes: [
-            "streetAddress",
-            "building",
-            "floor",
-            "apartment",
-            "district",
-            "city",
-            "province",
-            "country",
-            "postalCode",
-          ],
-        },
-        {
-          model: package,
-          attributes: {
-            exclude: [
-              "barcode",
-              "total",
-              "status",
-              "createdAt",
-              "updatedAt",
-              "bookingId",
-              "ecommerceCompanyId",
-              "categoryId",
-            ],
-          },
-        },
-      ],
-    });
-    const status = await bookingStatus.findOne({
-      where: {
-        title: "Ready to Ship",
-      },
-    });
-    let dt = Date.now();
-    let DT = new Date(dt);
-    let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1
-      }-${DT.getDate()}`;
-    let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
-    await bookingHistory.create({
-      date: currentDate,
-      time: currentTime,
-      bookingId,
-      bookingStatusId: status.id,
-    });
-    // Call function to create FedEx shipment and schedule pickup
-    console.log(" Fedex local function Call------------>");
-
-    if (bookingData.bookingTypeId == 6) {
-      try {
-        const fedexShipment = await createFedexShipmentLoc(bookingData);
-        const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
-        const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
-
-        bookingData.logisticCompanyTrackingNum = trackingNumber;
-        bookingData.label = label
-        bookingData.subTotal = amount;
-        bookingData.total = amount;
-        bookingData.paymentConfirmed = true;
-        bookingData.bookingStatusId = status.id;
-        bookingData.save();
-
-        for (let i = 0; i < bookingData.packages.length; i++) {
-          const pkg = bookingData.packages[i];
-          await pkg.update({
-            logisticCompanyTrackingNum: trackingNumber,
-            fedexLabel: label
-          })
-        }
-
-        const outObj = {
-          logisticCompanyTrackingNum: [
-            { trackingNumber: trackingNumber }
-          ],
-          label: [
-            { label: label }
-          ]
-        };
-
-        const response = returnFunction(
-          "1",
-          "Payment successfully Done",
-          outObj,
-          ""
-        );
-        return res.json(response);
-      } catch (fedexErr) {
-        console.error("FedEx local shipment failed, confirming payment without shipment:", fedexErr.message);
-        bookingData.paymentConfirmed = true;
-        bookingData.bookingStatusId = status.id;
-        await bookingData.save();
-        return res.json(returnFunction("1", "Payment successfully Done", {}, ""));
-      }
-    } else if (bookingData.bookingTypeId == 1) {
-      try {
-        const fedexShipment = await createFedexShipmentInt(bookingData);
-
-        console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
-
-        // Check if fedexShipment is a valid array and has elements
-        if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
-          const extractedShipments = fedexShipment.map((shipment) => {
-            const transactionShipment = shipment.output.transactionShipments[0];
-            return {
-              trackingNumber:
-                transactionShipment.pieceResponses[0].trackingNumber,
-              label:
-                transactionShipment.pieceResponses[0].packageDocuments[0].url,
-            };
-          });
-
-          bookingData.logisticCompanyTrackingNum =
-            extractedShipments.map((track) => ({
-              trackingNumber: track.trackingNumber
-            }));
-          bookingData.label = extractedShipments.map((shipment) => ({
-            label: shipment.label
-          }));
-          bookingData.paymentConfirmed = true;
-          bookingData.bookingStatusId = status.id;
-          await bookingData.save();
-
-          for (let i = 0; i < bookingData.packages.length; i++) {
-            const pkg = bookingData.packages[i];
-            await pkg.update({
-              logisticCompanyTrackingNum: extractedShipments[i].trackingNumber,
-              fedexLabel: extractedShipments[i].label
-            })
-          }
-
-          let outObj = {
-            logisticCompanyTrackingNum: bookingData.logisticCompanyTrackingNum,
-            label: extractedShipments,
-          };
-
-          const response = returnFunction(
-            "1",
-            "Payment successfully Done",
-            outObj,
-            ""
-          );
-          return res.json(response);
-        }
-      } catch (fedexErr) {
-        console.error("FedEx international shipment failed, confirming payment without shipment:", fedexErr.message);
-      }
-      bookingData.paymentConfirmed = true;
-      bookingData.bookingStatusId = status.id;
-      await bookingData.save();
-      return res.json(returnFunction("1", "Payment successfully Done", {}, ""));
-    }
-  } else {
-
-    return res.json(returnFunction("1", "Session retrived But Payment Pending"));
-
+//========================App payment (Stripe PaymentSheet)========================//
+// Creates the PaymentIntent the customer app confirms with the PaymentSheet. The
+// amount is the booking total and the booking id is kept in the metadata, so
+// intentGet can check the payment really belongs to the order it finalises.
+async function createPaymentIntent(req, res) {
+  const { bookingId } = req.body;
+  if (!bookingId) {
+    return res.json(returnFunction("0", "", {}, "Missing order"));
   }
 
+  const bookingData = await booking.findOne({
+    where: { id: bookingId, customerId: req.user.id },
+    attributes: ["id", "total", "paymentConfirmed"],
+  });
+  if (!bookingData) {
+    return res.json(returnFunction("0", "", {}, "Order not found"));
+  }
+  if (bookingData.paymentConfirmed) {
+    return res.json(
+      returnFunction("0", "", {}, "This order has already been paid.")
+    );
+  }
+  const amount = convertToCents(bookingData.total);
+  if (!(amount > 0)) {
+    return res.json(
+      returnFunction("0", "", {}, "This order has no price yet.")
+    );
+  }
+
+  const intent = await stripe.paymentIntents.create({
+    amount,
+    currency: "usd",
+    payment_method_types: ["card"],
+    metadata: { bookingId: String(bookingData.id), customerId: String(req.user.id) },
+  });
+
+  return res.json(
+    returnFunction("1", "Payment intent created", {
+      id: intent.id,
+      client_secret: intent.client_secret,
+      amount: convertToDollars(intent.amount),
+    }, "")
+  );
+}
+
+// Called by the customer app after the PaymentSheet succeeds. The paid amount is
+// taken from Stripe, never from the request, and finalizePaidBooking is idempotent,
+// so the app's retries can't create a second payment row or FedEx shipment.
+async function intentGet(req, res) {
+  const intentId = req.query.intentId;
+  const { bookingId } = req.body;
+  if (!intentId || !bookingId) {
+    return res.json(returnFunction("0", "", {}, "Missing payment details"));
+  }
+
+  const found = await booking.findOne({
+    where: { id: bookingId, customerId: req.user.id },
+    attributes: ["id", "total"],
+  });
+  if (!found) {
+    return res.json(returnFunction("0", "", {}, "Order not found"));
+  }
+
+  let intent;
+  try {
+    intent = await stripe.paymentIntents.retrieve(intentId);
+  } catch (err) {
+    return res.json(returnFunction("0", "", {}, "Unable to verify payment"));
+  }
+  if (String(intent?.metadata?.bookingId) !== String(bookingId)) {
+    return res.json(
+      returnFunction("0", "", {}, "Payment does not match this order")
+    );
+  }
+  if (intent.status !== "succeeded") {
+    return res.json(returnFunction("0", "", {}, "Payment is still pending"));
+  }
+
+  const labels = await finalizeAppPayment(bookingId, intent, found.total);
+  return res.json(returnFunction("1", "Payment successfully Done", { labels }, ""));
+}
+
+// Records a succeeded card payment (app PaymentSheet or saved/new card) on its booking:
+// the paid amount comes from Stripe, the intent id is kept for refunds, and
+// finalizePaidBooking does the rest. A FedEx-only failure still counts as paid (the
+// payment is recorded before the FedEx call); the next call retries the label.
+async function finalizeAppPayment(bookingId, intent, bookingTotal) {
+  const paidAmount = convertToDollars(intent.amount_received);
+  if (paidAmount !== convertToDollars(convertToCents(bookingTotal))) {
+    console.warn(
+      `booking ${bookingId} total ${bookingTotal} differs from paid ${paidAmount} (${intent.id})`
+    );
+  }
+
+  await booking.update({ captureId: intent.id }, { where: { id: bookingId } });
+
+  try {
+    return await finalizePaidBooking(bookingId, paidAmount);
+  } catch (err) {
+    const paid = await booking.findOne({
+      where: { id: bookingId },
+      attributes: ["paymentConfirmed"],
+    });
+    if (!paid?.paymentConfirmed) throw err;
+    console.error(`booking ${bookingId} paid but FedEx shipment failed: ${err.message}`);
+    return [];
+  }
 }
 
 //==================================Track Fedex Order===========================================================//
@@ -8656,6 +8571,7 @@ module.exports = {
   registerUserMobile,
   changeLanguageApi,
   retrieveSession,
+  createPaymentIntent,
   intentGet,
   stripeWebhook,
   confirmCheckout,

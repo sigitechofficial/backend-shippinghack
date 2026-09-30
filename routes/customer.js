@@ -5342,6 +5342,37 @@ router.put('/changeLanguageApi',validateToken,asyncMiddleware(userController.cha
 //Get Session
 router.post("/retrieveSession",asyncMiddleware(userController.retrieveSession))
 
+//Create Intent (customer app PaymentSheet)
+/**
+ * @swagger
+ * /customer/createPaymentIntent:
+ *   post:
+ *     tags:
+ *       - Customer --> Payment
+ *     summary: Create the Stripe PaymentIntent for a booking
+ *     description: Creates a PaymentIntent for the booking total (booking id kept in the metadata). The app confirms it with the Stripe PaymentSheet and then calls intentGet.
+ *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               bookingId:
+ *                 type: integer
+ *                 example: 123
+ *     responses:
+ *       200:
+ *         description: "status 1: data has id, client_secret and amount; status 0: order not found, already paid or not priced yet."
+ */
+router.post("/createPaymentIntent", validateToken, asyncMiddleware(userController.createPaymentIntent))
+
 //get Intent
 /**
  * @swagger
@@ -5350,8 +5381,13 @@ router.post("/retrieveSession",asyncMiddleware(userController.retrieveSession))
  *     tags:
  *       - Customer --> Payment
  *     summary: Retrieve intent and process payment for booking
- *     description: Retrieves Stripe payment intent details and processes booking based on intent status.
+ *     description: Checks the Stripe PaymentIntent succeeded and belongs to the booking, then records the payment (amount taken from Stripe) and creates the FedEx shipment. Idempotent.
  *     parameters:
+ *       - in: header
+ *         name: accessToken
+ *         required: true
+ *         schema:
+ *           type: string
  *       - in: query
  *         name: intentId
  *         required: true
@@ -5359,7 +5395,7 @@ router.post("/retrieveSession",asyncMiddleware(userController.retrieveSession))
  *           type: string
  *         description: The ID of the Stripe payment intent to retrieve.
  *     requestBody:
- *       description: Payment and booking information
+ *       description: Booking information
  *       required: true
  *       content:
  *         application/json:
@@ -5370,10 +5406,6 @@ router.post("/retrieveSession",asyncMiddleware(userController.retrieveSession))
  *                 type: integer
  *                 description: The ID of the booking to process.
  *                 example: 123
- *               amount:
- *                 type: number
- *                 description: The total payment amount.
- *                 example: 150.00
  *     responses:
  *       200:
  *         description: Payment processed and booking updated successfully.
@@ -5391,15 +5423,7 @@ router.post("/retrieveSession",asyncMiddleware(userController.retrieveSession))
  *                 data:
  *                   type: object
  *                   properties:
- *                     logisticCompanyTrackingNum:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           trackingNumber:
- *                             type: string
- *                             example: "123456789"
- *                     label:
+ *                     labels:
  *                       type: array
  *                       items:
  *                         type: object
@@ -5444,7 +5468,7 @@ router.post("/retrieveSession",asyncMiddleware(userController.retrieveSession))
  *                   example: "Error while processing payment"
  */
 
-router.post("/intentGet",asyncMiddleware(userController.intentGet))
+router.post("/intentGet", validateToken, asyncMiddleware(userController.intentGet))
 
 //!---------------------------Stripe Checkout Webhooks-------------------------------->>
 router.post("/StripeWebhook",asyncMiddleware(userController.stripeWebhook))
