@@ -3692,6 +3692,7 @@ async function cancelBooking(req, res) {
   const bookingData = await booking.findOne({
     where: {
       id: bookingId,
+      customerId: req.user.id,
     },
     include: [
       {
@@ -3699,8 +3700,17 @@ async function cancelBooking(req, res) {
         attributes: ['id', 'arrived'],
       },
     ],
-    attributes: ["bookingStatusId", "total", "id", "customerId"],
+    attributes: ["bookingStatusId", "total", "id", "customerId", "paymentConfirmed"],
   });
+  if (!bookingData) {
+    return res.json(returnFunction("0", "", {}, "Order not found"));
+  }
+  // Paid orders can't be cancelled (refunds are handled separately).
+  if (bookingData.paymentConfirmed) {
+    return res.json(
+      returnFunction("0", "", {}, "This order has been paid and can no longer be cancelled.")
+    );
+  }
 
   console.log("🚀 ~ cancelBooking ~ bookingData:", bookingData.packages);
 
@@ -3710,7 +3720,8 @@ async function cancelBooking(req, res) {
   console.log("packagesToUpdate=============>", packagesToUpdate);
 
   if (packageArrived) {
-    throw new CustomException("Your package is received. Now you cannot cancel the booking.");
+    const message = "Your package is received. Now you cannot cancel the booking.";
+    throw new CustomException(message, message);
   }
 
   // Update the 'arrived' key value to 'cancelled' for packagesToUpdate
@@ -4617,7 +4628,7 @@ async function myOrders(req, res) {
       // TODO add payment:true
       // no `status` filter: status=false marks a completed booking (selfPickupDelivered / markDeliver / driver delivery), which must stay in Order History
       where: { bookingTypeId: 6, customerId: userId },
-      attributes: ["id", "trackingId", "total", "createdAt"],
+      attributes: ["id", "trackingId", "total", "createdAt", "paymentConfirmed"],
       include: [
         {
           model: addressDBS,
