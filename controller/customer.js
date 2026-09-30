@@ -113,6 +113,7 @@ const PDFDocument = require("pdfkit");
 var CryptoJS = require("crypto-js");
 
 const { getDateAndTime } = require("../utils/helperFuncCompany");
+const { recordAdminEarning } = require("../utils/ledger");
 // Defining the account for sending email
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -7283,6 +7284,31 @@ function normalizeLabels(label) {
   return [];
 }
 
+// What FedEx charged for the shipment(s), for information only (it doesn't change the
+// business share). null when the Ship API response has no rating details.
+function fedexShippingCost(responses) {
+  let total = 0;
+  let found = false;
+  for (const response of responses || []) {
+    for (const shipment of response?.output?.transactionShipments || []) {
+      const rate = shipment?.completedShipmentDetail?.shipmentRating?.shipmentRateDetails?.[0];
+      let charge = rate?.totalNetCharge;
+      if (charge && typeof charge === "object") charge = charge.amount;
+      if (charge == null) {
+        const pieces = (shipment.pieceResponses || [])
+          .map((piece) => piece.netChargeAmount)
+          .filter((value) => value != null);
+        if (pieces.length) charge = pieces.reduce((sum, value) => sum + Number(value), 0);
+      }
+      if (charge != null && !Number.isNaN(Number(charge))) {
+        total += Number(charge);
+        found = true;
+      }
+    }
+  }
+  return found ? Math.round(total * 100) / 100 : null;
+}
+
 // Records the payment and creates the FedEx shipment/label for a paid booking.
 // Safe to call more than once (Stripe retries, webhook + success page both firing):
 // an existing label is returned as-is and payment rows are only written once.
@@ -7385,6 +7411,12 @@ async function finalizePaidBooking(bookingID, amount) {
     });
   }
 
+  // Local orders are delivered by FedEx (no driver and no "delivered" event), so the
+  // business share — the full amount paid — is recorded when the payment is.
+  if (bookingData.bookingTypeId == 6) {
+    await recordAdminEarning(bookingID);
+  }
+
   // Call function to create FedEx shipment and schedule pickup
   if (bookingData.bookingTypeId == 6) {
     const fedexShipment = await createFedexShipmentLoc(bookingData);
@@ -7395,6 +7427,8 @@ async function finalizePaidBooking(bookingID, amount) {
     bookingData.label = label;
     bookingData.subTotal = amount;
     bookingData.total = amount;
+    const shippingCost = fedexShippingCost([fedexShipment.data]);
+    if (shippingCost !== null) bookingData.shippingCost = shippingCost;
     await bookingData.save();
 
     for (let i = 0; i < bookingData.packages.length; i++) {
@@ -7429,6 +7463,8 @@ async function finalizePaidBooking(bookingID, amount) {
     bookingData.label = extractedShipments.map((shipment) => ({
       label: shipment.label
     }));
+    const shippingCost = fedexShippingCost(fedexShipment);
+    if (shippingCost !== null) bookingData.shippingCost = shippingCost;
     await bookingData.save();
 
     for (let i = 0; i < bookingData.packages.length; i++) {

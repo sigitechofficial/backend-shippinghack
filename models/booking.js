@@ -168,6 +168,11 @@ module.exports = (sequelize, DataTypes) =>{
             type: DataTypes.STRING(255),
             allowNull: true,  
         },
+        // What FedEx charged for the label (information only; set when the Ship API returns it)
+        shippingCost: {
+            type: DataTypes.DECIMAL(10,2),
+            allowNull: true,
+        },
         catText: {
             type: DataTypes.STRING(255),
             allowNull: true,  

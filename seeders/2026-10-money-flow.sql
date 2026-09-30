@@ -9,3 +9,7 @@ ALTER TABLE paymentRequests
   ADD COLUMN method VARCHAR(20) NULL,
   ADD COLUMN reference VARCHAR(255) NULL,
   ADD COLUMN note TEXT NULL;
+
+-- T6: FedEx shipping cost per booking (information only; filled when FedEx returns it)
+ALTER TABLE bookings
+  ADD COLUMN shippingCost DECIMAL(10,2) NULL;

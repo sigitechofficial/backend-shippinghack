@@ -99,7 +99,12 @@ const {
 const socialLinks = socialMediaLinks();
 const { attachment } = require("../helper/attactments");
 const deliveredMail = require("../helper/orderDelivery");
-const { round2, driverBalance } = require("../utils/ledger");
+const {
+  round2,
+  driverBalance,
+  recordDriverEarning,
+  recordAdminEarning,
+} = require("../utils/ledger");
 const attach = attachment();
 // Defining the account for sending email
 const transporter = nodemailer.createTransport({
@@ -2215,39 +2220,9 @@ async function deliveredDelivery(req, res) {
     { where: { id: bookingId } }
   );
 
-  await wallet.create({
-    amount: -1 * earning,
-    bookingId: bookingId,
-    userId: bookingData.deliveryDriverId,
-    description: "Delivery Driver Earnings",
-  });
-  const adminEarning = await wallet.sum("amount", { where: { bookingId } });
-  // The super-admin email differs per environment (staging was renamed to
-  // admin@theshippinghack.com; local DBs still have admin@shippinghack.com),
-  // so match any known form instead of one hardcoded address.
-  const adminEmails = [
-    process.env.ADMIN_EMAIL,
-    "admin@theshippinghack.com",
-    "admin@shippinghack.com",
-  ].filter(Boolean);
-  const admin = await warehouse.findOne({
-    where: {
-      [Op.or]: [{ email: adminEmails }, { companyName: "Super Admin" }],
-    },
-    order: [["id", "ASC"]],
-  });
-  if (admin) {
-    await wallet.create({
-      amount: -1 * adminEarning,
-      bookingId: bookingId,
-      adminId: admin.id,
-      description: "Admin Earning",
-    });
-  } else {
-    console.warn(
-      `deliveredDelivery: no admin warehouse found, skipping Admin Earning for booking ${bookingId}`
-    );
-  }
+  // driver pay, then the business share (paid − driver pay); one row each per booking
+  await recordDriverEarning(bookingId, bookingData.deliveryDriverId, earning);
+  await recordAdminEarning(bookingId);
 
   //  res.json({bookingData})
 

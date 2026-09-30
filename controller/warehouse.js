@@ -123,6 +123,7 @@ const { type } = require("os");
 const { create } = require("domain");
 const transporter = require("../helper/transporter");
 const fedex = require('../controller/fedex');
+const { recordDriverEarning, recordAdminEarning } = require("../utils/ledger");
 const arrived = require("../helper/arrived");
 
 
@@ -3041,6 +3042,8 @@ async function selfPickupDelivered(req, res) {
     // bookingData.deliveredAt= time.currentTimecurrentDate;
     bookingData.status = false;
     await bookingData.save();
+    // business share: no driver on a self pick-up, so the full amount paid
+    await recordAdminEarning(bookingData.id);
     // updating booking status
     // let done = await booking.update(
     //   {
@@ -5801,6 +5804,15 @@ async function markDeliver(req, res) {
   const currentDate = `${DT.getFullYear()}-${("0" + (DT.getMonth() + 1)).slice(-2)}-${("0" + DT.getDate()).slice(-2)}`;
   const currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
 
+  const assigned = await booking.findByPk(bookingId, { attributes: ["id", "deliveryDriverId"] });
+  if (!assigned) {
+    return res.json(returnFunction("0", "", {}, "Booking not found"));
+  }
+  // with an assigned driver the driver is paid and the business keeps paid − driver pay
+  let driverPay = null;
+  if (assigned.deliveryDriverId) {
+    driverPay = await getDriverEarning(bookingId, assigned.deliveryDriverId, "delivery");
+  }
 
   // completed: same fields as selfPickupDelivered (status=false = completed booking, still listed in myOrders)
   await booking.update(
@@ -5814,6 +5826,15 @@ async function markDeliver(req, res) {
     bookingId: bookingId,
     bookingStatusId: 18
   });
+
+  if (driverPay) {
+    await billingDetails.update(
+      { deliveryDriverEarning: driverPay.earning },
+      { where: { bookingId } }
+    );
+    await recordDriverEarning(bookingId, assigned.deliveryDriverId, driverPay.earning);
+  }
+  await recordAdminEarning(bookingId);
 
   let bookingData = await booking.findOne({
     where: { id: bookingId },
