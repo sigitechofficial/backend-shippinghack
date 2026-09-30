@@ -5534,7 +5534,7 @@ router.put('/updategencharges', validateToken, checkPermission, asyncMiddleware(
  * /admin/adddistancecharge:
  *   post:
  *     summary: Add a new distance charge
- *     description: This API allows the admin to add a new distance charge with a title, start value, end value, and price. The start and end values are converted to base units.
+ *     description: Adds a distance band for one vehicle type (driver pay = that vehicle's base rate + band price). From/To are entered in the admin's distance unit and stored in km; bands of one vehicle type may not overlap.
  *     tags:
  *       - Admin --> Charges Management
  *     parameters:
@@ -5552,6 +5552,10 @@ router.put('/updategencharges', validateToken, checkPermission, asyncMiddleware(
  *           schema:
  *             type: object
  *             properties:
+ *               vehicleTypeId:
+ *                 type: integer
+ *                 description: Required. The vehicle type the band is for.
+ *                 example: 1
  *               title:
  *                 type: string
  *                 description: The title of the distance charge.
@@ -5768,6 +5772,10 @@ router.get('/getdistancecharge', validateToken, checkPermission, asyncMiddleware
  *           schema:
  *             type: object
  *             properties:
+ *               vehicleTypeId:
+ *                 type: integer
+ *                 description: Required. The vehicle type the band is for.
+ *                 example: 1
  *               title:
  *                 type: string
  *                 description: The title of the distance charge.

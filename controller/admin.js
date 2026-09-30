@@ -2342,14 +2342,11 @@ async function updateGenCharges(req, res) {
  *    2.1 Add new range
  */
 async function addDistCharge(req, res) {
-  let { title, startValue, endValue, price } = req.body;
-  const appUnitId = await currentAppUnitsId();
-  const units = await unitsSymbolsAndRates(appUnitId);
-  startValue = convertToBaseUnits(startValue, units.conversionRate.distance);
-  endValue = convertToBaseUnits(endValue, units.conversionRate.distance);
+  const band = await distanceBandInput(req.body);
+  if (band.error) return res.json(returnFunction("0", "", {}, band.error));
 
   distanceCharges
-    .create({ title, startValue, endValue, price })
+    .create(band.values)
     .then((data) => {
       return res.json(returnFunction("1", "New range added", data, ""));
     })
@@ -2359,12 +2356,62 @@ async function addDistCharge(req, res) {
       );
     });
 }
+
+// Validates a distance band from the Pricing screen. Bands belong to a vehicle type
+// (driver pay = that vehicle's base rate + the band price) and are entered in the
+// admin's distance unit but stored in km. A distance d matches when From < d <= To,
+// so bands of one vehicle type may touch but not overlap.
+async function distanceBandInput(body, chargeId) {
+  const { title, vehicleTypeId } = body;
+  const from = Number(body.startValue);
+  const to = Number(body.endValue);
+  const price = Number(body.price);
+  if (!vehicleTypeId) return { error: "Choose the vehicle type this band is for" };
+  const vehicle = await vehicleType.findByPk(vehicleTypeId, { attributes: ["id"] });
+  if (!vehicle) return { error: "Vehicle type not found" };
+  if (body.startValue === "" || body.endValue === "" || Number.isNaN(from) || Number.isNaN(to) || from < 0 || to <= from) {
+    return { error: "Enter a distance range where To is greater than From" };
+  }
+  if (body.price === "" || Number.isNaN(price) || price < 0) {
+    return { error: "Enter a price of 0 or more" };
+  }
+  const appUnitId = await currentAppUnitsId();
+  const units = await unitsSymbolsAndRates(appUnitId);
+  const startValue = convertToBaseUnits(from, units.conversionRate.distance);
+  const endValue = convertToBaseUnits(to, units.conversionRate.distance);
+  const overlap = await distanceCharges.findOne({
+    where: {
+      vehicleTypeId,
+      startValue: { [Op.lt]: endValue },
+      endValue: { [Op.gt]: startValue },
+      ...(chargeId ? { id: { [Op.ne]: chargeId } } : {}),
+    },
+    attributes: ["title"],
+  });
+  if (overlap) {
+    return { error: `This range overlaps band "${overlap.title}" of the same vehicle type` };
+  }
+  return { values: { title, startValue, endValue, price, vehicleTypeId } };
+}
 /*
  *     2.2 Get all distance charges
  */
 async function getDistCharges(req, res) {
+  // grouped by vehicle type (with its base rate), then by distance
   const distCharData = await distanceCharges.findAll({
-    attributes: ["id", "title", "startValue", "endValue", "price", "unit"],
+    attributes: ["id", "title", "startValue", "endValue", "price", "unit", "vehicleTypeId"],
+    include: [
+      {
+        model: vehicleType,
+        required: false,
+        attributes: ["id", "title", "baseRate"],
+      },
+    ],
+    order: [
+      [vehicleType, "title", "ASC"],
+      ["vehicleTypeId", "ASC"],
+      ["startValue", "ASC"],
+    ],
   });
   const appUnitId = await currentAppUnitsId();
   const units = await unitsSymbolsAndRates(appUnitId);
@@ -2392,14 +2439,11 @@ async function getDistCharges(req, res) {
  *    2.3 Update distance charges
  */
 async function updateDistCharge(req, res) {
-  let { title, startValue, endValue, price, chargeId } = req.body;
-  // same as addDistCharge: entered in the admin's distance unit, stored in km
-  const appUnitId = await currentAppUnitsId();
-  const units = await unitsSymbolsAndRates(appUnitId);
-  startValue = convertToBaseUnits(startValue, units.conversionRate.distance);
-  endValue = convertToBaseUnits(endValue, units.conversionRate.distance);
+  const { chargeId } = req.body;
+  const band = await distanceBandInput(req.body, chargeId);
+  if (band.error) return res.json(returnFunction("0", "", {}, band.error));
   distanceCharges
-    .update({ title, startValue, endValue, price }, { where: { id: chargeId } })
+    .update(band.values, { where: { id: chargeId } })
     .then((data) => {
       return res.json(returnFunction("1", "Charge updated", {}, ""));
     })
