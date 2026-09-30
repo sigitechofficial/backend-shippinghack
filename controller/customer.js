@@ -5464,6 +5464,34 @@ async function deletecards(req, res) {
 }
 ////! create PaymentIntend
 
+// Card payments from the website's /payment-method page. The payment is taken
+// straight away (no hold) and recorded through finalizeAppPayment, like the app.
+async function cardPaymentBooking(bookingId, userId) {
+  return booking.findOne({
+    where: { id: bookingId, customerId: userId },
+    attributes: ["id", "total", "paymentConfirmed"],
+  });
+}
+
+async function respondToCardPayment(res, bookingData, intent) {
+  if (intent.status !== "succeeded") {
+    return res.json(
+      returnFunction("0", "Payment could not be completed", {}, "Payment could not be completed")
+    );
+  }
+  const labels = await finalizeAppPayment(bookingData.id, intent, bookingData.total);
+  const updated = await booking.findByPk(bookingData.id, {
+    attributes: ["logisticCompanyTrackingNum"],
+  });
+  return res.json(
+    returnFunction("1", "Payment successfully Done", {
+      logisticCompanyTrackingNum: decodeJsonColumn(updated.logisticCompanyTrackingNum),
+      label: labels[0]?.label || null,
+      labels,
+    }, "")
+  );
+}
+
 async function makepaymentBySavedCard(req, res) {
   const UserId = req.user.id;
   let { pmId, amount, bookingId } = req.body;
@@ -5487,369 +5515,33 @@ async function makepaymentBySavedCard(req, res) {
         "Invalid Subscription Id or You don't have any Subscription"
       );
     }
-    let ammount = convertToCents(amount);
-    stripe.paymentIntents
-      .create({
-        amount: `${ammount}`, // send in cents
-        currency: "usd",
-        payment_method_types: ["card"],
-        customer: `${userData.stripeCustomerId}`,
-        payment_method: pmId,
-        capture_method: "manual",
-      })
-      .then((pi) => {
-        console.log("Else Condition--------->2");
-        stripe.paymentIntents
-          .confirm(`${pi.id}`)
-          .then(async (result) => {
-            console.log("Else Condition--------->3");
-            const bookingData = await booking.findOne({
-              where: { id: bookingId },
-              include: [
-                {
-                  model: addressDBS,
-                  as: "pickupAddress",
-                  attributes: [
-                    "streetAddress",
-                    "building",
-                    "floor",
-                    "apartment",
-                    "district",
-                    "city",
-                    "province",
-                    "country",
-                    "postalCode",
-                  ],
-                },
-                {
-                  model: addressDBS,
-                  as: "dropoffAddress",
-                  attributes: [
-                    "streetAddress",
-                    "building",
-                    "floor",
-                    "apartment",
-                    "district",
-                    "city",
-                    "province",
-                    "country",
-                    "postalCode",
-                  ],
-                },
-                {
-                  model: package,
-                  attributes: {
-                    exclude: [
-                      "barcode",
-                      "total",
-                      "status",
-                      "createdAt",
-                      "updatedAt",
-                      "bookingId",
-                      "ecommerceCompanyId",
-                      "categoryId",
-                    ],
-                  },
-                },
-              ],
-            });
-            const status = await bookingStatus.findOne({
-              where: {
-                title: "Ready to Ship",
-              },
-            });
-            let dt = Date.now();
-            let DT = new Date(dt);
-            let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1
-              }-${DT.getDate()}`;
-            let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
-            await bookingHistory.create({
-              date: currentDate,
-              time: currentTime,
-              bookingId,
-              bookingStatusId: status.id,
-            });
-            const data = {
-              receivedAmount: result.amount_received,
-            };
-            // Call function to create FedEx shipment and schedule pickup
-            console.log(" Fedex local function Call------------>");
-
-            if (bookingData.bookingTypeId == 6) {
-              const fedexShipment = await createFedexShipmentLoc(bookingData);
-              bookingData.logisticCompanyTrackingNum =
-                fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
-
-              bookingData.label =
-                fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
-              bookingData.subTotal = amount;
-              bookingData.total = amount;
-              bookingData.save();
-              let outObj = {
-                logisticCompanyTrackingNum:
-                  bookingData.logisticCompanyTrackingNum,
-                label: bookingData.label,
-              };
-              const response = returnFunction(
-                "1",
-                "Payment successfully Done",
-                outObj,
-                ""
-              );
-              return res.json(response);
-            } else if (bookingData.bookingTypeId == 1) {
-              const fedexShipment = await createFedexShipmentInt(bookingData);
-
-              console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
-
-              // Check if fedexShipment is a valid array and has elements
-              if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
-                // Map over the shipment array to extract tracking numbers and labels
-                const extractedShipments = fedexShipment.map((shipment) => {
-                  const transactionShipment =
-                    shipment.output.transactionShipments[0]; // Assuming one transaction shipment per shipment object
-                  return {
-                    trackingNumber:
-                      transactionShipment.pieceResponses[0].trackingNumber,
-                    label:
-                      transactionShipment.pieceResponses[0].packageDocuments[0]
-                        .url,
-                  };
-                });
-
-                // If bookingData needs to store only the first shipment
-                bookingData.logisticCompanyTrackingNum =
-                  extractedShipments[0].trackingNumber;
-                bookingData.label = extractedShipments[0].label;
-                bookingData.paymentConfirmed = true;
-                bookingData.bookingStatusId = status.id;
-                await bookingData.save();
-
-                let outObj = {
-                  logisticCompanyTrackingNum:
-                    bookingData.logisticCompanyTrackingNum,
-                  label: bookingData.label,
-                  allShipments: extractedShipments, // Optionally return all extracted shipments
-                };
-
-                const response = returnFunction(
-                  "1",
-                  "Payment successfully Done",
-                  outObj,
-                  ""
-                );
-                return res.json(response);
-              } else {
-                // Handle case where no shipments are returned
-                return res
-                  .status(400)
-                  .json({ message: "No shipment data returned" });
-              }
-            }
-            // const response = returnFunction(
-            //   "1",
-            //   "Payment Successfull",
-            //   { data },
-            //   ""
-            // );
-            // return res.json(response);
-          })
-          .catch((err) => {
-            const response = returnFunction("0", err.message, {}, "");
-            return res.json(response);
-          });
-      })
-      .catch((err) => {
-        console.log("Error Condition--------->", err);
-        const response = returnFunction("0", err.message, {}, "");
-        return res.json(response);
-      });
-  } else {
-    console.log("Simple User --------------->");
-    let ammount = amount * 100;
-    stripe.paymentIntents
-      .create({
-        amount: `${ammount}`, // send in cents
-        currency: "usd",
-        payment_method_types: ["card"],
-        customer: `${userData.stripeCustomerId}`,
-        payment_method: pmId,
-        capture_method: "manual",
-      })
-      .then((pi) => {
-        stripe.paymentIntents
-          .confirm(`${pi.id}`)
-          .then(async (result) => {
-            console.log("BookingDatat====================>");
-            const bookingData = await booking.findOne({
-              where: { id: bookingId },
-              include: [
-                {
-                  model: addressDBS,
-                  as: "pickupAddress",
-                  attributes: [
-                    "streetAddress",
-                    "building",
-                    "floor",
-                    "apartment",
-                    "district",
-                    "city",
-                    "province",
-                    "country",
-                    "postalCode",
-                  ],
-                },
-                {
-                  model: addressDBS,
-                  as: "dropoffAddress",
-                  attributes: [
-                    "streetAddress",
-                    "building",
-                    "floor",
-                    "apartment",
-                    "district",
-                    "city",
-                    "province",
-                    "country",
-                    "postalCode",
-                  ],
-                },
-                {
-                  model: package,
-                  attributes: {
-                    exclude: [
-                      "barcode",
-                      "total",
-                      "status",
-                      "createdAt",
-                      "updatedAt",
-                      "bookingId",
-                      "ecommerceCompanyId",
-                      "categoryId",
-                    ],
-                  },
-                },
-              ],
-            });
-            console.log("BookingDatat====================>");
-            const status = await bookingStatus.findOne({
-              where: {
-                title: "Ready to Ship\r\n",
-              },
-            });
-            let dt = Date.now();
-            let DT = new Date(dt);
-            let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1
-              }-${DT.getDate()}`;
-            let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
-            await bookingHistory.create({
-              date: currentDate,
-              time: currentTime,
-              bookingId,
-              bookingStatusId: status.id,
-            });
-            const data = {
-              receivedAmount: result.amount_received,
-            };
-            // Call function to create FedEx shipment and schedule pickup
-            // return res.json(bookingData.bookingTypeId)
-            if (bookingData.bookingTypeId == 6) {
-              const fedexShipment = await createFedexShipmentLoc(bookingData);
-              // console.log(
-              //   "FEDEX SHIPMENT DATA----------------------->: ",
-              //   fedexShipment
-              // );
-              //return res.json(fedexShipment)
-              bookingData.logisticCompanyTrackingNum =
-                fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
-              bookingData.label =
-                fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
-              bookingData.subTotal = amount;
-              bookingData.total = amount;
-              bookingData.save();
-              let outObj = {
-                logisticCompanyTrackingNum:
-                  bookingData.logisticCompanyTrackingNum,
-                label: bookingData.label,
-              };
-
-              const response = returnFunction(
-                "1",
-                "Payment successfully Done",
-                outObj,
-                ""
-              );
-              return res.json(response);
-            }
-            if (bookingData.bookingTypeId == 1) {
-              const fedexShipment = await createFedexShipmentInt(bookingData);
-
-              console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
-
-              // Check if fedexShipment is a valid array and has elements
-              if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
-                // Map over the shipment array to extract tracking numbers and labels
-                const extractedShipments = fedexShipment.map((shipment) => {
-                  const transactionShipment =
-                    shipment.output.transactionShipments[0]; // Assuming one transaction shipment per shipment object
-                  return {
-                    trackingNumber:
-                      transactionShipment.pieceResponses[0].trackingNumber,
-                    label:
-                      transactionShipment.pieceResponses[0].packageDocuments[0]
-                        .url,
-                  };
-                });
-
-                // If bookingData needs to store only the first shipment
-                bookingData.logisticCompanyTrackingNum =
-                  extractedShipments[0].trackingNumber;
-                bookingData.label = extractedShipments[0].label;
-                bookingData.paymentConfirmed = true;
-                bookingData.bookingStatusId = status.id;
-                await bookingData.save();
-
-                let outObj = {
-                  logisticCompanyTrackingNum:
-                    bookingData.logisticCompanyTrackingNum,
-                  label: bookingData.label,
-                  allShipments: extractedShipments, // Optionally return all extracted shipments
-                };
-
-                const response = returnFunction(
-                  "1",
-                  "Payment successfully Done",
-                  outObj,
-                  ""
-                );
-                return res.json(response);
-              } else {
-                // Handle case where no shipments are returned
-                return res
-                  .status(400)
-                  .json({ message: "No shipment data returned" });
-              }
-            }
-
-            // const response = returnFunction(
-            //   "1",
-            //   "Payment Successfull",
-            //   { data },
-            //   ""
-            // );
-            // return res.json(response);
-          })
-          .catch((err) => {
-            console.log(err);
-            const response = returnFunction("0", err, {}, "");
-            return res.json(response);
-          });
-      })
-      .catch((err) => {
-        const response = returnFunction("0", err, {}, "");
-        return res.json(response);
-      });
   }
+
+  const bookingData = await cardPaymentBooking(bookingId, UserId);
+  if (!bookingData) {
+    return res.json(returnFunction("0", "Order not found", {}, "Order not found"));
+  }
+  if (bookingData.paymentConfirmed) {
+    return res.json(
+      returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
+    );
+  }
+
+  let intent;
+  try {
+    intent = await stripe.paymentIntents.create({
+      amount: convertToCents(amount), // send in cents
+      currency: "usd",
+      payment_method_types: ["card"],
+      customer: `${userData.stripeCustomerId}`,
+      payment_method: pmId,
+      confirm: true,
+      metadata: { bookingId: String(bookingData.id), customerId: String(UserId) },
+    });
+  } catch (err) {
+    return res.json(returnFunction("0", err.message, {}, err.message));
+  }
+  return respondToCardPayment(res, bookingData, intent);
 }
 
 ///
@@ -5867,401 +5559,47 @@ async function makepaymentbynewcard(req, res) {
 
   const userData = await user.findOne({ where: { id: req.user.id } });
   await ensureStripeCustomerId(userData);
-  console.log("User Data---------------->", userData);
-  const userType = userData.userTypeId;
-  console.log("Customer User Type ID: ", userType);
-  if (userType == 3) {
-    console.log("Business User-------------------->");
-    const bookingNDATA = await booking.findOne({
-      where: { id: bookingId },
-      attributes: ["bookingTypeId"],
-    });
-    console.log("Booking-------------->: ", bookingNDATA);
-    let bookingType = bookingNDATA.dataValues.bookingTypeId;
-    let subscripitonId = await userPlan.findOne({
-      where: {
-        userId: userData.id,
-        subscriptionStatus: "Active",
-      },
-      attributes: ["subscriptionPlanID"],
-    });
-    let ammount = convertToCents(amount);
 
-    // console.log("Subscription plan get of  user ----------------> ",subscripitonId)
-    // const subscriptionPlanID = subscripitonId.dataValues.subscriptionPlanID;
-    // const discountAmount = await discountget(subscriptionPlanID);
-    // let amountToPay = amount - discountAmount;
-
-    //  const discountPercentAmount=applyPercentagediscount(amount,discountAmount);
-    // if (bookingType === 6) {
-    //   console.log("Booking Type: ", bookingType);
-    //   ammount = amount * 100;
-    // } else {
-    //   ammount = discountPercentAmount * 100;
-    // }
-    const method = await stripe.paymentMethods.create({
-      type: "card",
-      billing_details: { name: cardName },
-      card: {
-        number: cardNumber,
-        exp_month: cardExpMonth,
-        exp_year: cardExpYear,
-        cvc: cardCVC,
-      },
-    });
-
-    if (method) {
-      if (saveStatus) {
-        await stripe.paymentMethods.attach(method.id, {
-          customer: userData.stripeCustomerId,
-        });
-      }
-
-      const intent = await stripe.paymentIntents.create({
-        amount: `${ammount}`,
-        currency: "usd",
-        payment_method_types: ["card"],
-        customer: `${userData.stripeCustomerId}`,
-        payment_method: method.id,
-        capture_method: "manual",
-      });
-
-      const confirmIntent = await stripe.paymentIntents.confirm(`${intent.id}`);
-
-      const bookingData = await booking.findOne({
-        where: { id: bookingId },
-        include: [
-          {
-            model: addressDBS,
-            as: "pickupAddress",
-            attributes: [
-              "streetAddress",
-              "building",
-              "floor",
-              "apartment",
-              "district",
-              "city",
-              "province",
-              "country",
-              "postalCode",
-            ],
-          },
-          {
-            model: addressDBS,
-            as: "dropoffAddress",
-            attributes: [
-              "streetAddress",
-              "building",
-              "floor",
-              "apartment",
-              "district",
-              "city",
-              "province",
-              "country",
-              "postalCode",
-            ],
-          },
-          {
-            model: package,
-            attributes: {
-              exclude: [
-                "barcode",
-                "total",
-                "status",
-                "createdAt",
-                "updatedAt",
-                "bookingId",
-                "ecommerceCompanyId",
-                "categoryId",
-              ],
-            },
-          },
-        ],
-      });
-      // return res.json(bookingData);
-
-      console.log("Booking Data: ", bookingData);
-
-      if (!bookingData) {
-        return res.status(404).json({ message: "Booking not found." });
-      }
-
-      if (!bookingData.pickupAddress || !bookingData.dropoffAddress) {
-        return res
-          .status(404)
-          .json({ message: "Address details are missing." });
-      }
-
-      const status = await bookingStatus.findOne({
-        where: { title: "Ready to Ship\r\n" },
-      });
-
-      let dt = Date.now();
-      let DT = new Date(dt);
-      let currentDate = `${DT.getFullYear()}-${(
-        "0" +
-        (DT.getMonth() + 1)
-      ).slice(-2)}-${("0" + DT.getDate()).slice(-2)}`;
-      let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
-      await bookingHistory.create({
-        date: currentDate,
-        time: currentTime,
-        bookingId: bookingData.id,
-        bookingStatusId: 10,
-      });
-      // Call function to create FedEx shipment and schedule pickup
-      if (bookingData.bookingTypeId == 6) {
-        const fedexShipment = await createFedexShipmentLoc(bookingData);
-        console.log("FEDEX SHIPMENT DATA --------------> : ", fedexShipment);
-        bookingData.logisticCompanyTrackingNum =
-          fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
-        bookingData.label =
-          fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
-        bookingData.subTotal = amount;
-        bookingData.total = amount;
-        bookingData.save();
-        let outObj = {
-          logisticCompanyTrackingNum: bookingData.logisticCompanyTrackingNum,
-          label: bookingData.label,
-        };
-        const response = returnFunction(
-          "1",
-          "Payment successfully Done",
-          outObj,
-          ""
-        );
-        return res.json(response);
-      } else if (bookingData.bookingTypeId == 1) {
-        const fedexShipment = await createFedexShipmentInt(bookingData);
-
-        console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
-
-        // Check if fedexShipment is a valid array and has elements
-        if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
-          // Map over the shipment array to extract tracking numbers and labels
-          const extractedShipments = fedexShipment.map((shipment) => {
-            const transactionShipment = shipment.output.transactionShipments[0]; // Assuming one transaction shipment per shipment object
-            return {
-              trackingNumber:
-                transactionShipment.pieceResponses[0].trackingNumber,
-              label:
-                transactionShipment.pieceResponses[0].packageDocuments[0].url,
-            };
-          });
-
-          // If bookingData needs to store only the first shipment
-          bookingData.logisticCompanyTrackingNum =
-            extractedShipments[0].trackingNumber;
-          bookingData.label = extractedShipments[0].label;
-          bookingData.paymentConfirmed = true;
-          bookingData.bookingStatusId = status.id;
-          await bookingData.save();
-
-          let outObj = {
-            logisticCompanyTrackingNum: bookingData.logisticCompanyTrackingNum,
-            label: bookingData.label,
-            allShipments: extractedShipments, // Optionally return all extracted shipments
-          };
-
-          const response = returnFunction(
-            "1",
-            "Payment successfully Done",
-            outObj,
-            ""
-          );
-          return res.json(response);
-        } else {
-          // Handle case where no shipments are returned
-          return res.status(400).json({ message: "No shipment data returned" });
-        }
-      }
-      // const response = returnFunction("1", "Payment successfully Done", {}, "");
-      // return res.json(response);
-    }
-  } else {
-    console.log("Simple User --------------->");
-    let ammount = amount * 100;
-    const method = await stripe.paymentMethods.create({
-      type: "card",
-      billing_details: { name: cardName },
-      card: {
-        number: cardNumber,
-        exp_month: cardExpMonth,
-        exp_year: cardExpYear,
-        cvc: cardCVC,
-      },
-    });
-
-    if (method) {
-      if (saveStatus) {
-        await stripe.paymentMethods.attach(method.id, {
-          customer: userData.stripeCustomerId,
-        });
-      }
-
-      const intent = await stripe.paymentIntents.create({
-        amount: `${ammount}`,
-        currency: "usd",
-        payment_method_types: ["card"],
-        customer: `${userData.stripeCustomerId}`,
-        payment_method: method.id,
-        capture_method: "manual",
-      });
-
-      const confirmIntent = await stripe.paymentIntents.confirm(`${intent.id}`);
-
-      const bookingData = await booking.findOne({
-        where: { id: bookingId },
-        include: [
-          {
-            model: addressDBS,
-            as: "pickupAddress",
-            attributes: [
-              "streetAddress",
-              "building",
-              "floor",
-              "apartment",
-              "district",
-              "city",
-              "province",
-              "country",
-              "postalCode",
-            ],
-          },
-          {
-            model: addressDBS,
-            as: "dropoffAddress",
-            attributes: [
-              "streetAddress",
-              "building",
-              "floor",
-              "apartment",
-              "district",
-              "city",
-              "province",
-              "country",
-              "postalCode",
-            ],
-          },
-          {
-            model: package,
-            attributes: {
-              exclude: [
-                "barcode",
-                "total",
-                "status",
-                "createdAt",
-                "updatedAt",
-                "bookingId",
-                "ecommerceCompanyId",
-                "categoryId",
-              ],
-            },
-          },
-        ],
-      });
-      // return res.json(bookingData);
-
-      console.log("Booking Data: ", bookingData);
-
-      if (!bookingData) {
-        return res.status(404).json({ message: "Booking not found." });
-      }
-
-      if (!bookingData.pickupAddress || !bookingData.dropoffAddress) {
-        return res
-          .status(404)
-          .json({ message: "Address details are missing." });
-      }
-
-      const status = await bookingStatus.findOne({
-        where: { title: "Ready to Ship\r\n" },
-      });
-
-      let dt = Date.now();
-      let DT = new Date(dt);
-      let currentDate = `${DT.getFullYear()}-${(
-        "0" +
-        (DT.getMonth() + 1)
-      ).slice(-2)}-${("0" + DT.getDate()).slice(-2)}`;
-      let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
-      await bookingHistory.create({
-        date: currentDate,
-        time: currentTime,
-        bookingId: bookingData.id,
-        bookingStatusId: 10,
-      });
-      // Call function to create FedEx shipment and schedule pickup
-      if (bookingData.bookingTypeId == 6) {
-        const fedexShipment = await createFedexShipmentLoc(bookingData);
-        console.log(
-          "FEDEX SHIPMENT DATA --------------> : ",
-          fedexShipment.data.output.transactionShipments[0].pieceResponses[0]
-        );
-        bookingData.logisticCompanyTrackingNum =
-          fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
-        bookingData.label =
-          fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
-        bookingData.subTotal = amount;
-        bookingData.total = amount;
-        bookingData.paymentConfirmed = true;
-        bookingData.bookingStatusId = status.id;
-        bookingData.save();
-        let outObj = {
-          logisticCompanyTrackingNum: bookingData.logisticCompanyTrackingNum,
-          label: bookingData.label,
-        };
-        const response = returnFunction(
-          "1",
-          "Payment successfully Done",
-          outObj,
-          ""
-        );
-        return res.json(response);
-      } else if (bookingData.bookingTypeId == 1) {
-        const fedexShipment = await createFedexShipmentInt(bookingData);
-
-        console.log("FEDEX SHIPMENT DATA:-------> ", fedexShipment);
-
-        // Check if fedexShipment is a valid array and has elements
-        if (Array.isArray(fedexShipment) && fedexShipment.length > 0) {
-          // Map over the shipment array to extract tracking numbers and labels
-          const extractedShipments = fedexShipment.map((shipment) => {
-            const transactionShipment = shipment.output.transactionShipments[0]; // Assuming one transaction shipment per shipment object
-            return {
-              trackingNumber:
-                transactionShipment.pieceResponses[0].trackingNumber,
-              label:
-                transactionShipment.pieceResponses[0].packageDocuments[0].url,
-            };
-          });
-
-          // If bookingData needs to store only the first shipment
-          bookingData.logisticCompanyTrackingNum =
-            extractedShipments[0].trackingNumber;
-          bookingData.label = extractedShipments[0].label;
-          await bookingData.save();
-
-          let outObj = {
-            logisticCompanyTrackingNum: bookingData.logisticCompanyTrackingNum,
-            label: bookingData.label,
-            allShipments: extractedShipments, // Optionally return all extracted shipments
-          };
-
-          const response = returnFunction(
-            "1",
-            "Payment successfully Done",
-            outObj,
-            ""
-          );
-          return res.json(response);
-        } else {
-          // Handle case where no shipments are returned
-          return res.status(400).json({ message: "No shipment data returned" });
-        }
-      }
-    }
+  const bookingData = await cardPaymentBooking(bookingId, req.user.id);
+  if (!bookingData) {
+    return res.json(returnFunction("0", "Order not found", {}, "Order not found"));
   }
+  if (bookingData.paymentConfirmed) {
+    return res.json(
+      returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
+    );
+  }
+
+  let intent;
+  try {
+    const method = await stripe.paymentMethods.create({
+      type: "card",
+      billing_details: { name: cardName },
+      card: {
+        number: cardNumber,
+        exp_month: cardExpMonth,
+        exp_year: cardExpYear,
+        cvc: cardCVC,
+      },
+    });
+    if (saveStatus) {
+      await stripe.paymentMethods.attach(method.id, {
+        customer: userData.stripeCustomerId,
+      });
+    }
+    intent = await stripe.paymentIntents.create({
+      amount: convertToCents(amount),
+      currency: "usd",
+      payment_method_types: ["card"],
+      customer: `${userData.stripeCustomerId}`,
+      payment_method: method.id,
+      confirm: true,
+      metadata: { bookingId: String(bookingData.id), customerId: String(req.user.id) },
+    });
+  } catch (err) {
+    return res.json(returnFunction("0", err.message, {}, err.message));
+  }
+  return respondToCardPayment(res, bookingData, intent);
 }
 
 // ! _________________________________________________________________________________________________________________________________
