@@ -4942,9 +4942,16 @@ async function orderDetails(req, res) {
 
   console.log("bookingData.dataValues.billableWeight==================>>>>>", bookingData.dataValues.billableWeight);
   // return res.json(returnFunction('1', `Booking Details ${bookingId}`, bookingData, ''))
+  // Direct delivery: the USA warehouse shipped it straight to the customer (status 14
+  // "shipped" in its history), so it never goes through Puerto Rico or a driver.
+  // Show only that route's steps; 19 stays last so the cancel / pop logic below is unchanged.
+  const isDirectDelivery =
+    bookingData.deliveryTypeId !== 2 &&
+    bookingData.bookingHistories.some((h) => h.bookingStatus && h.bookingStatus.id === 14);
   const bookingStatuses = await bookingStatus.findAll({
-    where:
-      bookingData.deliveryTypeId === 2
+    where: isDirectDelivery
+      ? { id: [1, 7, 8, 10, 14, 18, 19] }
+      : bookingData.deliveryTypeId === 2
         ? {
           id: {
             [Op.notIn]: [13, 14, 15, 16, 17, 18],
@@ -4957,6 +4964,9 @@ async function orderDetails(req, res) {
         },
     attributes: ["id", "title", "description"],
   });
+  // the customer app reads statusText / statusDesc as non-null strings
+  const stepText = (title) =>
+    title ? title.charAt(0).toUpperCase() + title.slice(1) : "";
   let cancelledData = {
     cancelledBy: "",
     name: "",
@@ -4990,8 +5000,8 @@ async function orderDetails(req, res) {
       found.forEach((data) => {
         let outObj = {
           bookingStatusId: data.bookingStatus.id,
-          statusText: data.bookingStatus.title,
-          statusDesc: ele.description,
+          statusText: stepText(data.bookingStatus.title),
+          statusDesc: ele.description || "",
           date: dateFormatDMY(data.date),
           time: data.time,
           status: true,
@@ -5007,8 +5017,8 @@ async function orderDetails(req, res) {
       } else {
         let outObj = {
           bookingStatusId: ele.id,
-          statusText: ele.title,
-          statusDesc: ele.description,
+          statusText: stepText(ele.title),
+          statusDesc: ele.description || "",
           date: "",
           time: "",
           status: false,
