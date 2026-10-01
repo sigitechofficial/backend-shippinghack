@@ -2225,9 +2225,7 @@ async function deliveredDelivery(req, res) {
   let dt = Date.now();
   let DT = new Date(dt);
   let currentDate = `${DT.getFullYear()}-${DT.getMonth() + 1}-${DT.getDate()}`;
-  let currentTime = `${
-    DT.getHours() + 5
-  }:${DT.getMinutes()}:${DT.getSeconds()}`;
+  let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
   await bookingHistory.create({
     date: currentDate,
     time: currentTime,

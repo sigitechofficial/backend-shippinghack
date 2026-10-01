@@ -4706,10 +4706,7 @@ async function throwNot(req, res) {
   //return res.json(to);
   let notification = { title, body };
   adminNotification(senderData,notification);
-  let dt = new Date();
-  //adding 5 hours
-  dt.setTime(dt.getTime() + 5 * 60 * 60 * 1000);
-  pushNotification.create({ at: dt, to: sendTo, title, body });
+  pushNotification.create({ at: new Date(), to: sendTo, title, body });
   return res.json(returnFunction("1", "Push Notifications sent", senderData, ""));
 }
 
