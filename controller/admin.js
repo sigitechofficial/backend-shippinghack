@@ -3526,28 +3526,19 @@ async function deleteCorregimiento(req, res) {
 //     attributes: ['id', 'trackingId', 'distance', 'total', 'appUnitId'],
 //   });
 
+// Every order (all statuses, newest first) unless ?bookingStatus / ?bookingType filter it,
+// so the Bookings page matches the dashboard's "All orders" count.
 async function getAllbookings(req, res) {
   let bookingData = await booking.findAll({
-    where: {
-      [Op.and]: [
-        // no status filter: booking.status=false only marks a completed order
-        // (delivered / handed over), and admins must still see those
-        req.query.bookingType
-          ? {
-              [Op.not]: [{ appUnitId: null }],
-              bookingTypeId: req.query.bookingType,
-            }
-          : { [Op.not]: [{ appUnitId: null }] },
-      ],
-    },
+    where: req.query.bookingType ? { bookingTypeId: req.query.bookingType } : {},
+    order: [["id", "DESC"]],
     include: [
       {
         model: bookingStatus,
-        where: req.query.bookingStatus
-          ? { id: req.query.bookingStatus }
-          : { id: { [Op.lte]: 15 } },
+        ...(req.query.bookingStatus ? { where: { id: req.query.bookingStatus } } : {}),
         attributes: ["id", "title"],
       },
+      { model: bookingType, attributes: ["id", "title"] },
       {
         model: addressDBS,
         as: "pickupAddress",
@@ -3603,26 +3594,29 @@ async function getAllbookings(req, res) {
       "total",
       "appUnitId",
       "weight",
+      "bookingTypeId",
+      "paymentConfirmed",
+      "createdAt",
     ],
   });
-  console.log("🚀 ~ getAllbookings ~ bookingData:", bookingData)
 
   let output = [];
   let outobj = {};
   for (let obj of bookingData) {
+    // a few bookings have no app units; show their raw values instead of failing the list
+    const appUnit = obj.appUnit || {};
+    const rate = (u) => (u && u.conversionRate) || 1;
     outobj = {
       bookingData: {
         id: obj.id,
         trackingId: obj.trackingId,
-        distance: unitsConversion(
-          obj.distance,
-          obj.appUnit.distanceUnit.conversionRate
-        ),
+        distance: unitsConversion(obj.distance, rate(appUnit.distanceUnit)),
         total: obj.total,
-        totalWeight: unitsConversion(
-          obj.weight,
-          obj.appUnit.weightUnit.conversionRate
-        ),
+        totalWeight: unitsConversion(obj.weight, rate(appUnit.weightUnit)),
+        bookingTypeId: obj.bookingTypeId,
+        bookingType: obj.bookingType ? obj.bookingType.title : null,
+        paymentConfirmed: !!obj.paymentConfirmed,
+        createdAt: obj.createdAt,
       },
       // bookingStatus: obj.bookingStatus.title,
       // pickupAddress:{
@@ -3640,16 +3634,19 @@ async function getAllbookings(req, res) {
         province: obj.dropoffAddress && obj.dropoffAddress.province,
       },
       unit: {
-        weight: obj.appUnit.weightUnit.symbol,
-        length: obj.appUnit.lengthUnit.symbol,
-        distance: obj.appUnit.distanceUnit.symbol,
-        currency: obj.appUnit.currencyUnit.symbol,
+        weight: appUnit.weightUnit?.symbol || "",
+        length: appUnit.lengthUnit?.symbol || "",
+        distance: appUnit.distanceUnit?.symbol || "",
+        currency: appUnit.currencyUnit?.symbol || "$",
       },
       bookingStatus: obj.bookingStatus
         ? { id: obj.bookingStatus.id, title: obj.bookingStatus.title }
         : null,
       receivingWarehouse: obj.receivingWarehouse
         ? { companyName: obj.receivingWarehouse.companyName, located: obj.receivingWarehouse.located }
+        : null,
+      deliveryWarehouse: obj.deliveryWarehouse
+        ? { companyName: obj.deliveryWarehouse.companyName, located: obj.deliveryWarehouse.located }
         : null,
     };
     output.push(outobj);
@@ -4280,7 +4277,6 @@ async function getGeneral(req, res) {
             2.  Graph data
 */
 async function graphData(req, res) {
-  const admin = req.params.id;
   let monthArr = [
     "Jan",
     "Feb",
@@ -4308,103 +4304,49 @@ async function graphData(req, res) {
     where: { description: "Admin Earning" },
     attributes: ["createdAt", "amount"],
   });
-  const adminEarningBetween = (from, to) =>
-    (-adminEarningRows
-      .filter((r) => from < Date.parse(r.createdAt) && Date.parse(r.createdAt) < to)
-      .reduce((sum, r) => sum + parseFloat(r.amount), 0)
-    ).toFixed(2);
+
+  // The last 12 calendar months, oldest first, ending with the current month. Each
+  // month runs from the 1st at 00:00 up to (not including) the 1st of the next month.
+  const inMonth = (rows, start, end) =>
+    rows.filter((r) => {
+      const t = new Date(r.createdAt).getTime();
+      return t >= start && t < end;
+    });
   let months = [],
     usersWithMonths = [],
     bookingsWithMonths = [],
     earningsWithMonths = [],
     adminEarningsWithMonths = [];
-  let cDate = new Date();
-  // Running a loop to get earnings for past 11 months
-  for (let i = 0; i <= 11; i++) {
-    let oneMonthStart = new Date(cDate.getFullYear(), cDate.getMonth() - i, 0);
-    let oneMonthEnd = new Date(cDate.getFullYear(), cDate.getMonth() - i, 0);
-    oneMonthStart.setDate(1);
-    oneMonthStart.setHours(0, 0, 1);
-    oneMonthEnd.setHours(23, 59, 0);
-    let mStart = oneMonthStart.toString();
-    let mEnd = oneMonthEnd.toString();
-    //console.log(mStart, mEnd)
-    let monthlyUsers = userData.filter(
-      (b) =>
-        Date.parse(oneMonthStart) < Date.parse(b.createdAt) &&
-        Date.parse(b.createdAt) < Date.parse(oneMonthEnd)
-    ).length;
-    let monthlyBookings = bookingData.filter(
-      (b) =>
-        Date.parse(oneMonthStart) < Date.parse(b.createdAt) &&
-        Date.parse(b.createdAt) < Date.parse(oneMonthEnd)
-    ).length;
-    let totalEarnings = 0;
-    let oneMonthData = bookingData.filter(
-      (b) =>
-        Date.parse(oneMonthStart) < Date.parse(b.createdAt) &&
-        Date.parse(b.createdAt) < Date.parse(oneMonthEnd)
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+    const paid = inMonth(bookingData, start.getTime(), end.getTime());
+    usersWithMonths.push(inMonth(userData, start.getTime(), end.getTime()).length);
+    bookingsWithMonths.push(paid.length);
+    earningsWithMonths.push(
+      paid.reduce((sum, b) => sum + parseFloat(b.total), 0).toFixed(2)
     );
-    totalEarnings = oneMonthData.reduce(
-      (pVal, cVal) => pVal + parseFloat(cVal.total),
-      0
-    );
-    let tmpObj = totalEarnings.toFixed(2);
-    usersWithMonths.push(monthlyUsers);
-    bookingsWithMonths.push(monthlyBookings);
-    earningsWithMonths.push(tmpObj);
     adminEarningsWithMonths.push(
-      adminEarningBetween(Date.parse(oneMonthStart), Date.parse(oneMonthEnd))
+      (
+        -inMonth(adminEarningRows, start.getTime(), end.getTime()).reduce(
+          (sum, r) => sum + parseFloat(r.amount),
+          0
+        ) || 0
+      ).toFixed(2)
     );
-    months.push(
-      `${monthArr[oneMonthStart.getMonth()]} ${oneMonthStart.getFullYear()}`
-    );
+    months.push(`${monthArr[start.getMonth()]} ${start.getFullYear()}`);
   }
-  //return res.json({usersWithMonths, bookingsWithMonths, earningsWithMonths})
-  // get data of current month
-  let date = new Date(cDate);
-  let currentDate = date.getDate();
-  let startOfCurrentMonth = new Date(
-    cDate.getTime() - (currentDate - 1) * 24 * 60 * 60 * 1000
-  );
-  let currtotalEarnings = 0;
-  let oneMonthData = bookingData.filter(
-    (b) =>
-      Date.parse(startOfCurrentMonth) < Date.parse(b.createdAt) &&
-      Date.parse(b.createdAt) < Date.parse(date)
-  );
-  currtotalEarnings = oneMonthData.reduce(
-    (pVal, cVal) => pVal + parseFloat(cVal.total),
-    0
-  );
-  let tmpObj = currtotalEarnings.toFixed(2);
-  earningsWithMonths.unshift(tmpObj);
-  adminEarningsWithMonths.unshift(
-    adminEarningBetween(Date.parse(startOfCurrentMonth), Date.parse(date))
-  );
-  let monthlyUsers = userData.filter(
-    (b) =>
-      Date.parse(startOfCurrentMonth) < Date.parse(b.createdAt) &&
-      Date.parse(b.createdAt) < Date.parse(date)
-  ).length;
-  let monthlyBookings = bookingData.filter(
-    (b) =>
-      Date.parse(startOfCurrentMonth) < Date.parse(b.createdAt) &&
-      Date.parse(b.createdAt) < Date.parse(date)
-  ).length;
-  usersWithMonths.unshift(monthlyUsers);
-  bookingsWithMonths.unshift(monthlyBookings);
-  months.unshift(`${monthArr[date.getMonth()]} ${date.getFullYear()}`);
 
   return res.json({
     status: "1",
     message: "Data of previous year",
     body: {
-      usersWithMonths: usersWithMonths.reverse(),
-      bookingsWithMonths: bookingsWithMonths.reverse(),
-      earningsWithMonths: earningsWithMonths.reverse(),
-      adminEarningsWithMonths: adminEarningsWithMonths.reverse(),
-      months: months.reverse(),
+      usersWithMonths,
+      bookingsWithMonths,
+      earningsWithMonths,
+      adminEarningsWithMonths,
+      months,
     },
     errors: "",
   });
