@@ -5760,6 +5760,8 @@ async function homePage(req, res) {
   const numOfBookings = await booking.count({
     where: { paymentConfirmed: true },
   });
+  // every order, paid or not (the Bookings page also lists unpaid ones)
+  const allBookings = await booking.count();
 
   const numOfWarehouses = await warehouse.count({
     where: { status: true, classifiedAId: 3 },
@@ -5826,6 +5828,7 @@ async function homePage(req, res) {
     blockedUsers,
     blockedDrivers,
     numOfBookings,
+    allBookings,
     numOfWarehouses,
     earnings,
     todayEarnings: todayEarnings === null ? "0.00" : todayEarnings,
