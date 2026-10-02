@@ -3429,6 +3429,15 @@ async function createOrderLoc(req, res) {
     dropoffAddressData.lat,
     dropoffAddressData.lng
   );
+  // two saved addresses with the same pin (or the same address twice) can't be shipped
+  const hasPin = (a) => a && a.lat !== null && a.lat !== "" && a.lng !== null && a.lng !== "";
+  if (
+    pickupAddressIdDB === dropoffAddressIdDB ||
+    (hasPin(pickupAddressData) && hasPin(dropoffAddressData) && Number(bookingDistance) < 0.01)
+  ) {
+    const msg = "Pickup and drop-off can't be the same place. Please choose another drop-off address.";
+    throw new CustomException(msg, msg);
+  }
 
   // let totalWeight = packages.reduce((sum, val) => {
   //   return (sum += parseFloat(val.weight));
@@ -4707,7 +4716,6 @@ async function orderDetails(req, res) {
     bookingData.dataValues[key] = fromBase(bookingData[key], u.rate.length).toFixed(2);
   }
   bookingData.dataValues.weight = fromBase(bookingData.weight, u.rate.weight).toFixed(2);
-  bookingData.dataValues.volume = volumeFromBase(bookingData.volume, u.rate.length).toFixed(2);
   // return res.json(returnFunction('1', `Booking Details ${bookingId}`, bookingData, ''))
   // Direct delivery: the USA warehouse shipped it straight to the customer (status 14
   // "shipped" in its history), so it never goes through Puerto Rico or a driver.
@@ -4715,8 +4723,12 @@ async function orderDetails(req, res) {
   const isDirectDelivery =
     bookingData.deliveryTypeId !== 2 &&
     bookingData.bookingHistories.some((h) => h.bookingStatus && h.bookingStatus.id === 14);
+  // Local orders go by FedEx straight from the pickup: no warehouse or driver steps
+  const isLocal = bookingData.bookingTypeId === 6;
   const bookingStatuses = await bookingStatus.findAll({
-    where: isDirectDelivery
+    where: isLocal
+      ? { id: [1, 10, 18, 19] }
+      : isDirectDelivery
       ? { id: [1, 7, 8, 10, 14, 18, 19] }
       : bookingData.deliveryTypeId === 2
         ? {
@@ -4764,16 +4776,15 @@ async function orderDetails(req, res) {
       (element) => element.bookingStatus.id === ele.id
     );
     if (found.length > 0) {
-      found.forEach((data) => {
-        let outObj = {
-          bookingStatusId: data.bookingStatus.id,
-          statusText: stepText(data.bookingStatus.title),
-          statusDesc: ele.description || "",
-          date: dateFormatDMY(data.date),
-          time: data.time,
-          status: true,
-        };
-        historyArray.push(outObj);
+      // a step that happened twice (e.g. measured again) is shown once, with its latest time
+      const data = found.reduce((a, b) => (b.id > a.id ? b : a));
+      historyArray.push({
+        bookingStatusId: data.bookingStatus.id,
+        statusText: stepText(data.bookingStatus.title),
+        statusDesc: ele.description || "",
+        date: dateFormatDMY(data.date),
+        time: data.time,
+        status: true,
       });
     } else {
       if (
@@ -4945,6 +4956,12 @@ async function orderDetails(req, res) {
     }
   });
   delete bookingData.dataValues.packages;
+  // volume from the sides shown (stored volumes have 2 decimals in in³, so a tiny box
+  // would read e.g. 0.98 cm³ instead of 1)
+  const shownVolume = bookingData.consolidation
+    ? Number(bookingData.dataValues.length) * Number(bookingData.dataValues.width) * Number(bookingData.dataValues.height)
+    : convertedPackages.reduce((sum, p) => sum + (Number(p.volume) || 0), 0);
+  bookingData.dataValues.volume = shownVolume.toFixed(2);
   // converting distance
   bookingData.dataValues.distance = unitConversionsR(
     bookingData.dataValues.distance,
@@ -7575,7 +7592,44 @@ async function trackFedexOrder(req, res) {
   const { trackingNumber } = req.body;
   const fedexShipment = await fedex.trackFedExPackage(trackingNumber);
   console.log("��� ~ trackFedexOrder ~ fedexShipment:", fedexShipment)
+  // Local orders: only FedEx knows when they arrive. When its tracking says delivered
+  // (status code "DL"), the order becomes Delivered here too.
+  try {
+    const latest = fedexShipment?.completeTrackResults?.[0]?.trackResults?.[0]?.latestStatusDetail;
+    if (trackingNumber && latest?.code === "DL") {
+      const pkg = await package.findOne({
+        where: { logisticCompanyTrackingNum: String(trackingNumber) },
+        include: { model: booking, attributes: ["id", "bookingTypeId"], where: { bookingTypeId: 6 } },
+        attributes: ["id"],
+      });
+      if (pkg) await markLocalDelivered(pkg.booking.id);
+    }
+  } catch (e) {
+    console.log("Local delivered from FedEx tracking failed:", e.message);
+  }
   return res.json(returnFunction("1", "Fedex Order Details", fedexShipment));
+}
+
+// A paid Local order that is Ready to Ship becomes Delivered (from FedEx tracking, or by
+// the admin). Its Admin Earning was already recorded when it was paid.
+async function markLocalDelivered(bookingId) {
+  const b = await booking.findByPk(bookingId, {
+    attributes: ["id", "bookingTypeId", "bookingStatusId", "paymentConfirmed"],
+  });
+  if (!b || b.bookingTypeId !== 6) return { ok: false, message: "This is not a Local order." };
+  if (b.bookingStatusId === 18) return { ok: true, message: "Already delivered." };
+  if (b.bookingStatusId !== 10 || !b.paymentConfirmed) {
+    return { ok: false, message: "Only paid Local orders that are Ready to Ship can be marked delivered." };
+  }
+  const time = getDateAndTime();
+  await booking.update({ bookingStatusId: 18, deliveredAt: new Date() }, { where: { id: bookingId } });
+  await bookingHistory.create({
+    date: time.currentDate,
+    time: time.currentTime,
+    bookingId,
+    bookingStatusId: 18,
+  });
+  return { ok: true, message: "Marked as delivered." };
 }
 
 
@@ -7622,6 +7676,7 @@ module.exports = {
   homepage,
   shippingCalculater,
   unitsInfo,
+  markLocalDelivered,
   idsForBooking,
   logisticCompanies,
   searchAddress,

@@ -4261,6 +4261,8 @@ router.get('/getallunits', validateToken, checkPermission, asyncMiddleware(admin
 // weight / size / distance units everyone types and sees
 router.get('/unitsettings', validateToken, checkPermission, asyncMiddleware(adminController.getUnitSettings));
 router.put('/unitsettings', validateToken, checkPermission, asyncMiddleware(adminController.updateUnitSettings));
+// mark a paid, Ready to Ship Local order delivered (FedEx delivers Local orders)
+router.put('/localorderdelivered', validateToken, checkPermission, asyncMiddleware(adminController.localOrderDelivered));
 //4. Get unit types addUnit
 /**
  * @swagger

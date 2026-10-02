@@ -96,6 +96,7 @@ const sequelize = require("sequelize");
 const {
   textSearchAddress,
   getNextPostalCode,
+  markLocalDelivered,
 } = require("../controller/customer");
 const e = require("express");
 const Braintree = require("./braintree");
@@ -2214,6 +2215,17 @@ async function getAllUnits(req, res) {
 }
 
 /*
+ *        Local order delivered: FedEx delivers Local orders and our status only moves when
+ *        FedEx tracking says so; the admin can also mark a paid Ready to Ship Local order
+ *        delivered.
+ */
+async function localOrderDelivered(req, res) {
+  const result = await markLocalDelivered(req.body.bookingId);
+  if (!result.ok) throw new CustomException(result.message, result.message);
+  return res.json(returnFunction("1", result.message, {}, ""));
+}
+
+/*
  *        4. Unit settings: the weight, size and distance units everyone types and sees.
  *           The database keeps lb / in / km; a new setting applies to new entries,
  *           existing orders keep the units they were created with.
@@ -4253,11 +4265,10 @@ async function orderDetatils(req, res) {
           bookingData.height,
           systemUnits.conversionRate.length
         ),
-        volume: volumeFromBase(
-          bookingData.volume,
-          systemUnits.conversionRate.length
-        ),
       }
+      // volume from the sides shown (stored volumes have only 2 decimals in in³)
+      const m = outObj.measurements;
+      m.volume = Math.round(m.length * m.width * m.height * 100) / 100;
     }
     // shown in the booking's units; the Direct rule compares the base value (lb)
     outObj.chargedWeight = unitsConversion(baseCharged, systemUnits.conversionRate.weight);
@@ -7170,6 +7181,7 @@ module.exports = {
   getAllUnits,
   getUnitSettings,
   updateUnitSettings,
+  localOrderDelivered,
   // Support
   getSupport,
   updateSupport,

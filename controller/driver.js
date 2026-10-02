@@ -1675,7 +1675,12 @@ async function bookingDetailsById(req, res) {
     // calculating distance from pickup to warehouse
   }
 
-  let driver_earning = 0;
+  // finished jobs: what the driver was actually credited for this booking
+  const credited = await wallet.findOne({
+    where: { bookingId, description: "Delivery Driver Earnings" },
+    attributes: ["amount"],
+  });
+  let driver_earning = credited ? round2(-Number(credited.amount)) : null;
   let online_status = false;
   // distance from the driver's live location to the drop-off ("N/A" when unknown);
   // the same rule as the job lists, so both always show the same value
@@ -1688,11 +1693,11 @@ async function bookingDetailsById(req, res) {
     bookingData.bookingStatusId == "15" ||
     bookingData.bookingStatusId == "16"
   ) {
-    driver_earning = await getDriverEarning(
+    driver_earning = (await getDriverEarning(
       bookingId,
       bookingData.deliveryDriverId ? bookingData.deliveryDriverId : driverId,
       "delivery"
-    );
+    )).earning;
     const location = await driverLocationOf(
       bookingData.deliveryDriverId ? bookingData.deliveryDriverId : driverId
     );
@@ -1739,7 +1744,7 @@ async function bookingDetailsById(req, res) {
     dropoffCode: `${bookingData.dropoffAddress.postalCode} `,
     distance: `${driver_distance}`,
     consolidation: bookingData.consolidation,
-    earning: `$${driver_earning.earning}`, //TODO removed driver_earning.earning
+    earning: driver_earning == null ? "N/A" : `$${driver_earning}`,
     customer: bookingData.customer,
     Packages,
   };

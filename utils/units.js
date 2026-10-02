@@ -87,13 +87,14 @@ function packagesInUnits(packages, rate) {
     p.length = fromBase(p.length, rate.length);
     p.width = fromBase(p.width, rate.length);
     p.height = fromBase(p.height, rate.length);
-    p.volume = volumeFromBase(p.volume, rate.length);
+    // volume from the sides shown (stored volumes have only 2 decimals in in³)
+    p.volume = round(p.length * p.width * p.height);
     if (p.actualWeight !== undefined) {
       p.actualWeight = text(p.actualWeight, rate.weight);
       p.actualLength = text(p.actualLength, rate.length);
       p.actualWidth = text(p.actualWidth, rate.length);
       p.actualHeight = text(p.actualHeight, rate.length);
-      p.actualVolume = volumeFromBase(p.actualVolume, rate.length).toFixed(2);
+      p.actualVolume = round(Number(p.actualLength) * Number(p.actualWidth) * Number(p.actualHeight)).toFixed(2);
     }
   }
 }

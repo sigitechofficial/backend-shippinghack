@@ -1281,11 +1281,10 @@ async function bookingDetailsById(req, res) {
           bookingData.height,
           systemUnits.conversionRate.length
         ),
-        volume: volumeFromBase(
-          bookingData.volume,
-          systemUnits.conversionRate.length
-        ),
       }
+      // volume from the sides shown (stored volumes have only 2 decimals in in³)
+      const m = outObj.measurements;
+      m.volume = Math.round(m.length * m.width * m.height * 100) / 100;
     }
     // shown in the booking's units; the Direct rule compares the base value (lb)
     outObj.chargedWeight = unitsConversion(baseCharged, systemUnits.conversionRate.weight);
@@ -1595,11 +1594,10 @@ async function bookingDetailsCancelled(req, res) {
           bookingData.height,
           systemUnits.conversionRate.length
         ),
-        volume: volumeFromBase(
-          bookingData.volume,
-          systemUnits.conversionRate.length
-        ),
       }
+      // volume from the sides shown (stored volumes have only 2 decimals in in³)
+      const m = outObj.measurements;
+      m.volume = Math.round(m.length * m.width * m.height * 100) / 100;
     }
     // shown in the booking's units; the Direct rule compares the base value (lb)
     outObj.chargedWeight = unitsConversion(baseCharged, systemUnits.conversionRate.weight);
