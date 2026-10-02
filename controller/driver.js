@@ -102,6 +102,30 @@ async function safeFirebaseGet(url) {
     return { data: null };
   }
 }
+// The driver's live location, saved by the driver app in Firebase; null when it can't
+// be read (e.g. the database is off) or has no coordinates.
+async function driverLocationOf(driverId) {
+  const res = await safeFirebaseGet(
+    "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
+      `${driverId}` +
+      ".json"
+  );
+  const lat = Number(res?.data?.lat);
+  const lng = Number(res?.data?.lng);
+  if (!res?.data || !Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
+  return { lat, lng };
+}
+// Distance from the driver to an address in the unit chosen, as text; "N/A" when the
+// driver's location or the address's coordinates are unknown (never a distance from 0,0).
+async function distanceFromDriver(location, address) {
+  const lat = Number(address?.lat);
+  const lng = Number(address?.lng);
+  const known = (v) => v !== null && v !== undefined && v !== "";
+  if (!location || !known(address?.lat) || !known(address?.lng) || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return "N/A";
+  }
+  return String(await distanceShown(location.lat, location.lng, lat, lng));
+}
 const {
   registerUserEmail,
   accountCreated,
@@ -1289,34 +1313,11 @@ async function allAssociatedJobs(req, res) {
     //!modified
     //Picked deliveries
     pickuped = await bookingData.filter((ele) => ele.bookingStatusId == 16);
-    let driverLocation = await safeFirebaseGet(
-      "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
-        `${driverId}` +
-        ".json"
-    );
-    let findDist = false;
-    (driverLat = ""), (driverLng = "");
-    if (driverLocation.data != null) {
-      driverLat = driverLocation.data.lat;
-      driverLng = driverLocation.data.lng;
-      findDist = true;
-    }
+    const driverLoc = await driverLocationOf(driverId);
     await Promise.all(
       pickuped.map(async (ele) => {
         let { earning } = await getDriverEarning(ele.id, driverId, "delivery");
-        let driverDistance = (await distanceShown(
-          driverLat,
-          driverLng,
-          ele.dropoffAddress.lat,
-          ele.dropoffAddress.lng
-        ))
-          ? await distanceShown(
-              driverLat,
-              driverLng,
-              ele.dropoffAddress.lat,
-              ele.dropoffAddress.lng
-            )
-          : "N/A";
+        let driverDistance = await distanceFromDriver(driverLoc, ele.dropoffAddress);
 
         ele.dataValues.earning = String(earning);
         ele.dataValues.distance = String(driverDistance);
@@ -1675,13 +1676,10 @@ async function bookingDetailsById(req, res) {
   }
 
   let driver_earning = 0;
-  let driver_id = null;
-  let orderLat = 0;
-  let orderLng = 0;
-
-  let requ = {};
   let online_status = false;
-  let driver_distance = 0;
+  // distance from the driver's live location to the drop-off ("N/A" when unknown);
+  // the same rule as the job lists, so both always show the same value
+  let driver_distance = "N/A";
 
   if (
     bookingData.bookingStatusId == "12" ||
@@ -1695,47 +1693,11 @@ async function bookingDetailsById(req, res) {
       bookingData.deliveryDriverId ? bookingData.deliveryDriverId : driverId,
       "delivery"
     );
-    driver_id = bookingData.deliveryDriverId
-      ? bookingData.deliveryDriverId
-      : driverId;
-    orderLat = bookingData.dropoffAddress.lat;
-    orderLng = bookingData.dropoffAddress.lng;
-  }
-
-  if (driver_id != null) {
-    requ = await safeFirebaseGet(
-      "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
-        `${driver_id}` +
-        ".json"
+    const location = await driverLocationOf(
+      bookingData.deliveryDriverId ? bookingData.deliveryDriverId : driverId
     );
-    if (requ.data != null) {
-      online_status = true;
-      console.log(requ.data.lat, requ.data.lng, orderLat, orderLng);
-      driver_distance = await distanceShown(
-        requ.data.lat,
-        requ.data.lng,
-        orderLat,
-        orderLng
-      );
-      console.log(driver_distance);
-    }
-  } else {
-    requ = await safeFirebaseGet(
-      "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
-        `${req.user.id}` +
-        ".json"
-    );
-    if (requ.data != null) {
-      online_status = true;
-      console.log(requ.data.lat, requ.data.lng, orderLat, orderLng);
-      driver_distance = await distanceShown(
-        requ.data.lat,
-        requ.data.lng,
-        orderLat,
-        orderLng
-      );
-      console.log(driver_distance);
-    }
+    online_status = !!location;
+    driver_distance = await distanceFromDriver(location, bookingData.dropoffAddress);
   }
   console.log(` eEEEEEERERERERER ${typeof driver_earning}`);
   // sizes and weights in the booking's units (the database keeps lb / in), as text
@@ -2042,9 +2004,9 @@ async function groupDetailDelivery(req, res) {
         ".json"
     );
     if (!driverData.data)
-      throw CustomException(
+      throw new CustomException(
         "Driver live location not available",
-        "Please go online and try again"
+        "Driver live location not available. Please go online and try again"
       );
     const driverLat = driverData.data.lat;
     const driverLng = driverData.data.lng;
@@ -2058,9 +2020,9 @@ async function groupDetailDelivery(req, res) {
     });
     let route = await optimizeRoute(unSortedBookings, driverLat, driverLng);
     if (route.length === 0)
-      throw CustomException(
+      throw new CustomException(
         "No route found for this group",
-        "Please try again"
+        "No route found for this group. Please try again"
       );
     //return res.json(route)
     // get sort array from route
@@ -2769,37 +2731,14 @@ let loginDataForLogin = (userData, accessToken, online_status, dvToken) => {
 };
 let filterBookings = async (bookingData, driverId) => {
   let jobs = [];
-  let driverLocation = await safeFirebaseGet(
-    "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
-      `${driverId}` +
-      ".json"
-  );
-  let findDist = false;
-  (driverLat = ""), (driverLng = "");
-  if (driverLocation.data != null) {
-    driverLat = driverLocation.data.lat;
-    driverLng = driverLocation.data.lng;
-    findDist = true;
-  }
+  const driverLoc = await driverLocationOf(driverId);
   await Promise.all(
     bookingData.map(async (ele) => {
       let tmpObj = {};
       const { weight, weightUnit } = await jobWeight(ele);
       const { symbol } = await currentUnits();
       let { earning } = await getDriverEarning(ele.id, driverId, "delivery");
-      let driverDistance = (await distanceShown(
-        driverLat,
-        driverLng,
-        ele.dropoffAddress.lat,
-        ele.dropoffAddress.lng
-      ))
-        ? await distanceShown(
-            driverLat,
-            driverLng,
-            ele.dropoffAddress.lat,
-            ele.dropoffAddress.lng
-          )
-        : "N/A";
+      let driverDistance = await distanceFromDriver(driverLoc, ele.dropoffAddress);
 
       tmpObj = {
         id: ele.id,
@@ -2831,19 +2770,7 @@ let filterBookingsOnCapacity = async (
   driverId
 ) => {
   let jobs = [];
-  let driverLocation = await safeFirebaseGet(
-    "https://theshippinghack-default-rtdb.firebaseio.com/ShippingHack_driver/" +
-      `${driverId}` +
-      ".json"
-  );
-  let findDist = false;
-  (driverLat = ""), (driverLng = "");
-
-  if (driverLocation.data != null) {
-    driverLat = driverLocation.data.lat;
-    driverLng = driverLocation.data.lng;
-    findDist = true;
-  }
+  const driverLoc = await driverLocationOf(driverId);
 
   await Promise.all(
     bookingData.map(async (ele) => {
@@ -2862,19 +2789,7 @@ let filterBookingsOnCapacity = async (
         );
         // jobs outside the driver's vehicle-type bands aren't offered
         if (matched) {
-          let driverDistance = (await distanceShown(
-            driverLat,
-            driverLng,
-            ele.dropoffAddress.lat,
-            ele.dropoffAddress.lng
-          ))
-            ? await distanceShown(
-                driverLat,
-                driverLng,
-                ele.dropoffAddress.lat,
-                ele.dropoffAddress.lng
-              )
-            : "N/A";
+          let driverDistance = await distanceFromDriver(driverLoc, ele.dropoffAddress);
 
           tmpObj = {
             id: ele.id,
