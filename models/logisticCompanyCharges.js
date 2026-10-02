@@ -1,11 +1,12 @@
 module.exports = (sequelize, DataTypes) =>{
     const logisticCompanyCharges = sequelize.define('logisticCompanyCharges', {
+        // charged weight band in lb (base unit): From < weight <= To
         startValue:{
-            type:DataTypes.FLOAT,
+            type:DataTypes.DECIMAL(12,4),
             defaultValue:0,
         },
         endValue:{
-            type:DataTypes.FLOAT,
+            type:DataTypes.DECIMAL(12,4),
             defaultValue:0
         },
         ETA: {
@@ -16,8 +17,9 @@ module.exports = (sequelize, DataTypes) =>{
             type: DataTypes.STRING(),
             allowNull: true
         },
+        // price per lb of charged weight
         charges:{
-            type:DataTypes.DECIMAL(10,2),
+            type:DataTypes.DECIMAL(12,4),
             defaultValue:0
         },
         status: {

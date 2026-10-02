@@ -115,6 +115,25 @@ var CryptoJS = require("crypto-js");
 const { getDateAndTime } = require("../utils/helperFuncCompany");
 const { recordAdminEarning } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
+const {
+  currentUnits,
+  unitsFor,
+  toBase,
+  fromBase,
+  volumeFromBase,
+  unitsPayload,
+  checkPackages,
+} = require("../utils/units");
+const {
+  calculateWeights,
+  chargedWeightOf,
+  localPrice,
+  quoteInternational,
+  quoteLocal,
+  companiesWithRates,
+  quoteCompany,
+  measuredPackages,
+} = require("../utils/pricing");
 // Defining the account for sending email
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -1281,6 +1300,15 @@ async function createFedexShipmentInt(bookingData) {
 
     const responses = [];
     for (const pkg of bookingData.packages) {
+      // Label = what the USA warehouse measured (lb / in, the units the database stores);
+      // the customer's numbers until it is measured. FedEx takes whole inches.
+      const measured = Number(pkg.actualWeight) > 0;
+      const label = {
+        weight: Math.max(0.1, Math.round(Number(measured ? pkg.actualWeight : pkg.weight) * 100) / 100),
+        length: Math.max(1, Math.round(Number(measured ? pkg.actualLength : pkg.length))),
+        width: Math.max(1, Math.round(Number(measured ? pkg.actualWidth : pkg.width))),
+        height: Math.max(1, Math.round(Number(measured ? pkg.actualHeight : pkg.height))),
+      };
       const payload = {
         labelResponseOptions: "URL_ONLY",
         requestedShipment: {
@@ -1349,7 +1377,7 @@ async function createFedexShipmentInt(bookingData) {
                 quantityUnits: "EA",
                 weight: {
                   units: "LB",
-                  value: Number(pkg.weight), // Use actual package weight
+                  value: label.weight,
                 },
                 customsValue: {
                   amount: Number(pkg.value), // Adjust as needed
@@ -1375,12 +1403,12 @@ async function createFedexShipmentInt(bookingData) {
             {
               weight: {
                 units: "LB",
-                value: Number(pkg.weight), // Use actual package weight
+                value: label.weight,
               },
               dimensions: {
-                length: Number(pkg.length), // Ensure length is set
-                width: Number(pkg.width), // Ensure width is set
-                height: Number(pkg.height), // Ensure height is set
+                length: label.length,
+                width: label.width,
+                height: label.height,
                 units: "IN", // Set the unit for dimensions
               },
             },
@@ -2935,155 +2963,42 @@ async function homepage(req, res) {
   );
 }
 
-//! function for calculating Total Weight, Total Dimenssional Weight and charged weight
-async function calculateWeights(packages, divisor) {
-  console.log("Packages===========>Consolidate", packages);
-  console.log("divisor===========>divisor", divisor);
-
-  let weight = 0;
-  let dimensionalWeight = 0;
-  let chargedWeight = 0;
-
-  for (let index = 0; index < packages.length; index++) {
-    let package = packages[index];
-    let Weightcharges = 0;
-    let billableWeight = 0;
-
-    weight += package.actualWeight;
-    const testWeight = package.actualVolume / divisor;
-    dimensionalWeight += testWeight;
-
-    // billable = larger of actual and dimensional weight (equal values used to give 0).
-    // As before, only the dimensional weight is rounded; actual weight is billed as measured
-    // (rounding it would bill a 6.4 lb parcel as 6 lb).
-    const actual = Number(package.actualWeight) || 0;
-    const dim = testWeight || 0;
-    billableWeight = actual >= dim ? actual : Math.round(dim) || dim;
-
-    chargedWeight += billableWeight;
-    console.log("🚀 ~ calculateWeights ~ chargedWeight:", chargedWeight)
-  }
-  return { weight, dimensionalWeight, chargedWeight };
-}
 /*
-            . shipping Calculater
+            . Shipping Calculator
     ________________________________________
+    Same price as a real order: International uses the companies' active rate bands,
+    Local the flat Local price. Packages are typed in the units the admin chose.
 */
-async function calculateWeight(packages, divisor) {
-  let weight = 0;
-  let dimensionalWeight = 0;
-  let chargedWeight = 0;
-
-  for (let index = 0; index < packages.length; index++) {
-    let package = packages[index];
-    let Weightcharges = 0;
-    let billableWeight;
-
-    weight += parseFloat(package.weight);
-    dimensionalWeight += package.volume / divisor;
-
-    // billable = larger of actual and dimensional weight (equal values used to give NaN/0).
-    // Only the dimensional weight is rounded; actual weight is billed as entered.
-    const actual = parseFloat(package.weight) || 0;
-    const dim = package.volume / divisor || 0;
-    billableWeight = actual >= dim ? actual : Math.round(dim) || dim;
-
-    chargedWeight += parseFloat(billableWeight);
-  }
-  return { weight, dimensionalWeight, chargedWeight };
-}
-///////
 async function shippingCalculater(req, res) {
-  const { origin, destination, packages, bookingType } = req.body;
-
-  const appUnitData = await appUnits.findOne({
-    where: { status: true, deleted: false },
-    include: [
-      { model: units, as: "weightUnit", attributes: ["conversionRate"] },
-      { model: units, as: "lengthUnit", attributes: ["conversionRate"] },
-      { model: units, as: "distanceUnit", attributes: ["conversionRate"] },
-    ],
-    attributes: ["id"],
-  });
-
-  const logisticCompanyData = await logisticCompany.findAll({
-    where: {
-      status: true,
-    },
-    include: {
-      model: logisticCompanyCharges,
-      where: {
-        status: true,
-        bookingType: bookingType,
-      },
-    },
-  });
-
-  packages.map((data) => {
-    // Making conversions
-    data.length = unitConversions(
-      data.length,
-      appUnitData.lengthUnit.conversionRate
-    );
-    data.width = unitConversions(
-      data.width,
-      appUnitData.lengthUnit.conversionRate
-    );
-    data.height = unitConversions(
-      data.height,
-      appUnitData.lengthUnit.conversionRate
-    );
-    data.weight = unitConversions(
-      data.weight,
-      appUnitData.weightUnit.conversionRate
-    );
-    // Calculating volume
-    data.volume = data.length * data.width * data.height;
-  });
-
-  let arryofCompanies = [];
-  let companySet = new Set(); // To track unique company IDs
-
-  for (let company of logisticCompanyData) {
-    if (companySet.has(company.id)) {
-      continue; // Skip if company already added
-    }
-
-    let weightsData = await calculateWeight(packages, company.divisor);
-    let comp = {
-      id: company.id,
-      name: company.title,
-      logo: company.logo,
-      Actualweight: String(weightsData.weight),
-      dimensionalWeight: String(Math.round(weightsData.dimensionalWeight)),
-      chargedWeight: String(weightsData.chargedWeight),
+  const { packages, bookingType } = req.body;
+  const u = await currentUnits();
+  const local = String(bookingType || "").toLowerCase() === "local";
+  checkPackages(packages, u, { local });
+  const basePackages = packages.map((p) => {
+    const length = toBase(p.length, u.rate.length);
+    const width = toBase(p.width, u.rate.length);
+    const height = toBase(p.height, u.rate.length);
+    return {
+      actualWeight: toBase(p.weight, u.rate.weight),
+      actualVolume: length * width * height,
     };
-
-    for (let charge of company.logisticCompanyCharges) {
-      if (
-        weightsData.chargedWeight >= charge.startValue &&
-        weightsData.chargedWeight < charge.endValue
-      ) {
-        comp.charges = parseFloat(charge.charges * weightsData.chargedWeight).toFixed(2);
-        comp.ETA = charge.ETA;
-        comp.flash = charge.flash;
-
-        arryofCompanies.push(comp);
-        companySet.add(company.id); // Mark company as added
-        break; // No need to check further charges for the same company
-      }
-    }
-  }
-
-  if (arryofCompanies.length === 0) {
-    return res.json(
-      returnFunction("1", "Weight Range is higher", { arryofCompanies }, "")
-    );
-  }
-
+  });
+  const arryofCompanies = local
+    ? await quoteLocal(basePackages, u)
+    : await quoteInternational(basePackages, u);
+  const message = arryofCompanies.length ? "Total Charges" : "No delivery company has a rate for this weight";
   return res.json(
-    returnFunction("1", "Total Charges", { arryofCompanies }, "")
+    returnFunction("1", message, { arryofCompanies, ...unitsPayload(u) }, "")
   );
+}
+
+/*
+            . Units the customer types and sees, with the package limits in those units
+              (no login: the website calculator uses it)
+*/
+async function unitsInfo(req, res) {
+  const u = await currentUnits();
+  return res.json(returnFunction("1", "Units", unitsPayload(u), ""));
 }
 
 /*
@@ -3101,12 +3016,12 @@ async function idsForBooking(req, res) {
     phoneNum: userInfo.phoneNum,
     //address: userInfo.userAddresses.length === 0? {id: "", postalCode: "",secondPostalCode: "" }: {id: `${userInfo.userAddresses[0].addressDB.id}`, postalCode: userInfo.userAddresses[0].addressDB.postalCode, secondPostalCode: userInfo.userAddresses[0].addressDB.secondPostalCode }
   };
-  const appUnitId = await currentAppUnitsId();
-  // getting Conversion Rates and Symbols
-  const unit = await unitsSymbolsAndRates(appUnitId);
+  const u = await currentUnits();
   let outObj = await idsFunction(userId);
   outObj.userInfo = userData;
-  outObj.unit = unit.symbol;
+  const { unit, limits } = unitsPayload(u);
+  outObj.unit = unit;
+  outObj.limits = limits;
   return res.json(returnFunction("1", "All related Ids", outObj, ""));
 }
 
@@ -3165,7 +3080,10 @@ async function createOrderInt(req, res) {
       );
     }
   }
-  const [userData, receivingWarehouse, appUnitData, weightThreshold] =
+  // sizes and weights are typed in the units the admin chose
+  const u = await currentUnits();
+  checkPackages(packages, u);
+  const [userData, receivingWarehouse] =
     await Promise.all([
       user.findByPk(userId, {
         attributes: [
@@ -3179,19 +3097,6 @@ async function createOrderInt(req, res) {
       warehouse.findOne({
         where: { located: "usa" },
         attributes: ["id", "addressDBId"],
-      }),
-      appUnits.findOne({
-        where: { status: true, deleted: false },
-        include: [
-          { model: units, as: "weightUnit", attributes: ["conversionRate"] },
-          { model: units, as: "lengthUnit", attributes: ["conversionRate"] },
-          { model: units, as: "distanceUnit", attributes: ["conversionRate"] },
-        ],
-        attributes: ["id"],
-      }),
-      generalCharges.findOne({
-        where: { key: "weight_threshold" },
-        attributes: ["value"],
       }),
     ]);
 
@@ -3237,7 +3142,7 @@ async function createOrderInt(req, res) {
     // weight: convertedTotalWeight,
     rated,
     consolidation: consolidate,
-    appUnitId: appUnitData.id,
+    appUnitId: u.appUnitId,
     bookingTypeId: 1,
     bookingStatusId: 1,
     logisticCompanyId: 1,
@@ -3306,24 +3211,11 @@ async function createOrderInt(req, res) {
   });
 
   packages.map((data) => {
-    // making conversions
-    data.length = unitConversions(
-      data.length,
-      appUnitData.lengthUnit.conversionRate
-    );
-    data.width = unitConversions(
-      data.width,
-      appUnitData.lengthUnit.conversionRate
-    );
-    data.height = unitConversions(
-      data.height,
-      appUnitData.lengthUnit.conversionRate
-    );
-    data.weight = unitConversions(
-      data.weight,
-      appUnitData.weightUnit.conversionRate
-    );
-    // calculating volume
+    // typed in the units shown → stored in base units (lb / in / in³)
+    data.length = toBase(data.length, u.rate.length);
+    data.width = toBase(data.width, u.rate.length);
+    data.height = toBase(data.height, u.rate.length);
+    data.weight = toBase(data.weight, u.rate.weight);
     data.volume = data.length * data.width * data.height;
     //Add Estimated Arrival time
     data.ETA = data.eta;
@@ -3474,7 +3366,10 @@ async function createOrderLoc(req, res) {
   // if (businessUser.userTypeId === 3) {
   //   await checkBookingLimit(userId);
   // }
-  let [pickupAddressIdDB, dropoffAddressIdDB, appUnitData] = await Promise.all([
+  // weight is typed in the units the admin chose; at least 1, at most 150 lb in total
+  const u = await currentUnits();
+  checkPackages(packages, u, { local: true });
+  let [pickupAddressIdDB, dropoffAddressIdDB] = await Promise.all([
     addressAdder(
       addNewPickup,
       pickupAddress,
@@ -3489,15 +3384,6 @@ async function createOrderLoc(req, res) {
       userId,
       dropoffAddressId
     ),
-    appUnits.findOne({
-      where: { status: true, deleted: false },
-      include: [
-        { model: units, as: "weightUnit", attributes: ["conversionRate"] },
-        { model: units, as: "lengthUnit", attributes: ["conversionRate"] },
-        { model: units, as: "distanceUnit", attributes: ["conversionRate"] },
-      ],
-      attributes: ["id"],
-    }),
   ]);
 
   let [pickupAddressData, dropoffAddressData, userData] = await Promise.all([
@@ -3549,30 +3435,30 @@ async function createOrderLoc(req, res) {
   // }, 0);
   // converting the weight (from app units to base units)
 
+  // typed in the units shown → stored in base units (lb / in / in³)
+  const basePackages = packages.map((p) => {
+    const length = toBase(p.length, u.rate.length);
+    const width = toBase(p.width, u.rate.length);
+    const height = toBase(p.height, u.rate.length);
+    return {
+      weight: toBase(p.weight, u.rate.weight),
+      length,
+      width,
+      height,
+      volume: length * width * height,
+    };
+  });
   let weight = 0,
     length = 0,
     width = 0,
     volume = 0,
     height = 0;
-  console.log("appUnitData-------------->", appUnitData.dataValues);
-  packages.forEach((sum) => {
-    weight += unitConversions(
-      sum.weight,
-      appUnitData.weightUnit.conversionRate
-    );
-    length += unitConversions(
-      sum.length,
-      appUnitData.lengthUnit.conversionRate
-    );
-    width += unitConversions(sum.width, appUnitData.lengthUnit.conversionRate);
-    height += unitConversions(
-      sum.height,
-      appUnitData.lengthUnit.conversionRate
-    );
-    volume += unitConversions(
-      sum.length * sum.width * sum.height,
-      appUnitData.lengthUnit.conversionRate
-    ); // Assuming volumeUnit is the correct conversion rate
+  basePackages.forEach((p) => {
+    weight += p.weight;
+    length += p.length;
+    width += p.width;
+    height += p.height;
+    volume += p.volume;
   });
 
   let dimensions = { weight, height, length, volume, width };
@@ -3608,7 +3494,7 @@ async function createOrderLoc(req, res) {
     rated: "pending",
     pickupAddressId: pickupAddressIdDB,
     dropoffAddressId: dropoffAddressIdDB,
-    appUnitId: appUnitData.id,
+    appUnitId: u.appUnitId,
     bookingStatusId: 1,
     bookingTypeId: 6,
     customerId: userId,
@@ -3630,16 +3516,12 @@ async function createOrderLoc(req, res) {
   //   //returns a Buffer
   //   fs.writeFileSync(`Public/Barcodes/${trackingId}.png`, buffer);
   // });
-  let charge = 0.0;
-  if (dimensions.weight > 0 && dimensions.weight < 20) {
-    charge = 12.0;
-  } else if (dimensions.weight >= 20 && dimensions.weight <= 150) {
-    charge = 20.0;
-  }
+  // flat Local price by total weight (lb)
+  const charge = localPrice(dimensions.weight);
   await booking.update(
     {
       trackingId,
-      subtotal: charge,
+      subTotal: charge,
       total: charge,
       barcode: `Public/Barcodes/${trackingId}.png`,
     },
@@ -3662,30 +3544,24 @@ async function createOrderLoc(req, res) {
   // adding packages to table
   // manipulating packages
 
-  let convertedPackages = packages.map((data) => {
-    // making conversions
-    data.actualLength = unitConversions(
-      data.length,
-      appUnitData.lengthUnit.conversionRate
-    );
-    data.actualWidth = unitConversions(
-      data.width,
-      appUnitData.lengthUnit.conversionRate
-    );
-    data.actualHeight = unitConversions(
-      data.height,
-      appUnitData.lengthUnit.conversionRate
-    );
-    data.actualWeight = unitConversions(
-      data.weight,
-      appUnitData.weightUnit.conversionRate
-    );
-    // calculating volume
-    data.actualVolume = data.length * data.width * data.height;
-    // adding status
-    data.status = true;
-    data.bookingId = bookingData.id;
-    return data;
+  // Local packages are not re-measured: what the customer typed is also the measured value
+  let convertedPackages = packages.map((data, i) => {
+    const b = basePackages[i];
+    return {
+      ...data,
+      weight: b.weight,
+      length: b.length,
+      width: b.width,
+      height: b.height,
+      volume: b.volume,
+      actualWeight: b.weight,
+      actualLength: b.length,
+      actualWidth: b.width,
+      actualHeight: b.height,
+      actualVolume: b.volume,
+      status: true,
+      bookingId: bookingData.id,
+    };
   });
   await package.bulkCreate(convertedPackages);
 
@@ -3960,120 +3836,24 @@ async function logisticCompanies(req, res) {
   const bookingData = await booking.findByPk(bookingId, {
     include: { model: package },
   });
-  console.log("Booking Data from Logistic Companies---------------->", bookingData);
+  if (!bookingData) throw new CustomException("Order not found", "Order not found");
+  const { arryofCompanies, u } = await quoteBooking(bookingData);
+  const message = arryofCompanies.length ? "Total Charges" : "No delivery company has a rate for this weight";
+  return res.json(
+    returnFunction("1", message, { arryofCompanies, ...unitsPayload(u) }, "")
+  );
+}
 
-  const appUnitData = await appUnits.findOne({
-    where: { status: true, deleted: false },
-    include: [
-      { model: units, as: "weightUnit", attributes: ["conversionRate"] },
-      { model: units, as: "lengthUnit", attributes: ["conversionRate"] },
-      { model: units, as: "distanceUnit", attributes: ["conversionRate"] },
-    ],
-    attributes: ["id"],
-  });
-
-  bookingData.packages.map((data) => {
-    // making conversions
-    data.actualLength = unitConversions(data.actualLength, appUnitData.lengthUnit.conversionRate);
-    data.actualWidth = unitConversions(data.actualWidth, appUnitData.lengthUnit.conversionRate);
-    data.actualHeight = unitConversions(data.actualHeight, appUnitData.lengthUnit.conversionRate);
-    data.actualWeight = unitConversions(data.actualWeight, appUnitData.weightUnit.conversionRate);
-
-    // calculating volume
-    data.actualVolume = data.actualLength * data.actualWidth * data.actualHeight;
-  });
-
-  let arryofCompanies = [];
-
-  if (bookingData.bookingTypeId === 6) {
-    console.log("Local==============>>>>>>>>");
-    const logisticCompanyData = await logisticCompany.findAll({
-      include: {
-        model: logisticCompanyCharges,
-        where: { bookingType: "local" },
-      },
-    });
-    for (let company of logisticCompanyData) {
-      let weightsData = await calculateWeight(bookingData.packages, company.divisor);
-      console.log(weightsData);
-      let comp = {
-        id: company.id,
-        name: company.title,
-        logo: company.logo,
-        Actualweight: weightsData.weight,
-        dimensionalWeight: Math.round(weightsData.dimensionalWeight),
-        chargedWeight: weightsData.chargedWeight,
-      };
-
-
-      let companyAdded = false;
-      for (let charge of company.logisticCompanyCharges) {
-        if (weightsData.chargedWeight >= charge.startValue && weightsData.chargedWeight < charge.endValue) {
-          comp.charges = (charge.charges * weightsData.chargedWeight).toFixed(2);
-          comp.ETA = charge.ETA;
-          comp.flash = charge.flash;
-          if (!companyAdded) {  // Add company only once
-            arryofCompanies.push(comp);
-            companyAdded = true;
-          }
-          break; // Avoid duplicates by stopping at the first match
-        }
-      }
-    }
-
-    if (arryofCompanies.length === 0) {
-      return res.json(returnFunction("1", "Weight Range is higher", { arryofCompanies }, ""));
-    }
-    return res.json(returnFunction("1", "Total Charges", { arryofCompanies }, ""));
-  } else {
-    console.log("going into else Condition============>");
-    const logisticCompanyData = await logisticCompany.findAll({
-      include: {
-        model: logisticCompanyCharges,
-        where: { bookingType: 'International' },
-        order: [["charges", "ASC"]],
-      },
-    });
-
-    console.log("logisticCompanyData============>", logisticCompanyData);
-
-    for (let company of logisticCompanyData) {
-      let weightsData = bookingData.consolidation
-        ? await calculateWeights([{ actualWeight: bookingData.weight, actualVolume: bookingData.volume }], company.divisor)
-        : await calculateWeights(bookingData.packages, company.divisor);
-
-      let comp = {
-        id: company.id,
-        name: company.title,
-        logo: company.logo,
-        Actualweight: weightsData.weight,
-        dimensionalWeight: Math.round(weightsData.dimensionalWeight),
-        chargedWeight: weightsData.chargedWeight,
-      };
-
-      let companyAdded = false; // Flag to track if the company has been added
-      for (let charge of company.logisticCompanyCharges) {
-        if (weightsData.chargedWeight >= charge.startValue && weightsData.chargedWeight < charge.endValue) {
-          comp.charges = (charge.charges * weightsData.chargedWeight).toFixed(2);
-          comp.ETA = charge.ETA;
-          comp.flash = charge.flash;
-
-          if (!companyAdded) {  // Add company only once
-            arryofCompanies.push(comp);
-            companyAdded = true;
-          }
-          break; // Exit loop once a match is found to avoid duplicates
-        }
-      }
-    }
-
-    if (arryofCompanies.length === 0) {
-      return res.json(returnFunction("1", "Weight Range is higher", { arryofCompanies }, ""));
-    }
-
-    arryofCompanies.sort((a, b) => a.id - b.id);
-    return res.json(returnFunction("1", "Total Charges", { arryofCompanies }, ""));
-  }
+// Prices of every company for a booking, in the booking's units. International orders
+// use the measured packages (one box when consolidated); Local orders the flat price.
+async function quoteBooking(bookingData) {
+  const u = await unitsFor(bookingData.appUnitId);
+  const packages = measuredPackages(bookingData);
+  const arryofCompanies =
+    bookingData.bookingTypeId === 6
+      ? await quoteLocal(packages, u)
+      : await quoteInternational(packages, u);
+  return { arryofCompanies, u };
 }
 
 /*
@@ -4723,8 +4503,17 @@ async function myOrders(req, res) {
     _________________________________________________________
 */
 async function chooseLogisticCompany(req, res) {
-  const { bookingId, logisticCompanyId, charges } = req.body;
-  let bookingData = await booking.findByPk(bookingId);
+  const { bookingId, logisticCompanyId } = req.body;
+  let bookingData = await booking.findByPk(bookingId, { include: { model: package } });
+  if (!bookingData) throw new CustomException("Order not found", "Order not found");
+  // the price comes from the company's rate bands, not from the app
+  const { arryofCompanies } = await quoteBooking(bookingData);
+  const quote = arryofCompanies.find((c) => Number(c.id) === Number(logisticCompanyId));
+  if (!quote) {
+    const msg = "This delivery company has no rate for this order. Please choose another one.";
+    throw new CustomException(msg, msg);
+  }
+  const charges = Number(quote.charges);
   bookingData.logisticCompanyId = logisticCompanyId;
   let customerId = bookingData.customerId;
   console.log("Customer ID------------>", customerId);
@@ -4908,39 +4697,17 @@ async function orderDetails(req, res) {
       "bookingTypeId",
     ],
   });
-  // return res.json(bookingData)
-  let weightData = null;
-  if (bookingData.consolidation) {
-    console.log(
-      "🚀 ~ orderDetails ~ bookingData.consolidation:",
-      bookingData.consolidation
-    );
-
-    weightData = await calculateWeights(
-      [
-        {
-          actualWeight: bookingData.weight,
-          actualVolume: bookingData.volume,
-        },
-      ],
-      bookingData.logisticCompany.divisor
-    );
-  } else if (bookingData.logisticCompany) {
-    weightData = await calculateWeights(
-      bookingData.packages,
-      bookingData.logisticCompany.divisor
-    )
+  // Charged weight and the booking-level measurements, in the booking's units
+  const u = await unitsFor(bookingData.appUnit?.id);
+  bookingData.dataValues.billableWeight = fromBase(
+    chargedWeightOf(bookingData),
+    u.rate.weight
+  ).toFixed(2);
+  for (const key of ["length", "width", "height"]) {
+    bookingData.dataValues[key] = fromBase(bookingData[key], u.rate.length).toFixed(2);
   }
-
-  let chargedWeight = weightData?.chargedWeight;
-  if (typeof chargedWeight === 'string') {
-    console.log("String==========================>")
-    chargedWeight = chargedWeight.trim().replace(/^0+/, ''); // Remove leading zeros
-  }
-
-  bookingData.dataValues.billableWeight = parseFloat(chargedWeight).toFixed(2);
-
-  console.log("bookingData.dataValues.billableWeight==================>>>>>", bookingData.dataValues.billableWeight);
+  bookingData.dataValues.weight = fromBase(bookingData.weight, u.rate.weight).toFixed(2);
+  bookingData.dataValues.volume = volumeFromBase(bookingData.volume, u.rate.length).toFixed(2);
   // return res.json(returnFunction('1', `Booking Details ${bookingId}`, bookingData, ''))
   // Direct delivery: the USA warehouse shipped it straight to the customer (status 14
   // "shipped" in its history), so it never goes through Puerto Rico or a driver.
@@ -6933,12 +6700,8 @@ async function shopifyOrder(req, res) {
   let totalWeight = extractedData.packages.reduce((sum, val) => {
     return (sum += parseFloat(val.weight));
   }, 0);
-  // converting the weight (from app units to base units)
-
-  let convertedTotalWeight = unitConversions(
-    totalWeight,
-    appUnitData.weightUnit.conversionRate
-  );
+  // Shopify weights are converted from grams to lb, the base unit, in extractOrderData
+  let convertedTotalWeight = totalWeight;
   const bookingData = await booking.create({
     // receiver is the person creating the order
     receiverName: extractedData.receiverName,
@@ -7013,10 +6776,6 @@ async function shopifyOrder(req, res) {
     //   data.height,
     //   appUnitData.lengthUnit.conversionRate
     // );
-    data.weight = unitConversions(
-      data.weight,
-      appUnitData.weightUnit.conversionRate
-    );
     // calculating volume
     // data.volume = data.length * data.width * data.height;
     // adding status
@@ -7862,6 +7621,7 @@ module.exports = {
   // Homepage
   homepage,
   shippingCalculater,
+  unitsInfo,
   idsForBooking,
   logisticCompanies,
   searchAddress,

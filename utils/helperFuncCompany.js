@@ -225,31 +225,8 @@ function getDateAndTime(){
 }
 
 
- function calculateWeights(packages , divisor) {
-
-  let weight = 0; 
-  let dimensionalWeight = 0;
-  let chargedWeight = 0;
-  let devider = parseFloat(divisor);
-
-  for (let index = 0; index < packages.length; index++) {
-    let package = packages[index];
-    let Weightcharges = 0;
-    let billableWeight;
-
-    weight += parseFloat(package.actualWeight);
-    dimensionalWeight += parseFloat(package.actualVolume)/devider;
-
-    if (parseFloat(package.actualWeight) > dimensionalWeight) {
-      billableWeight = parseFloat(package.actualWeight);
-    } else if (dimensionalWeight > parseFloat(package.actualWeight)) {
-      billableWeight = dimensionalWeight;
-    }
-
-    chargedWeight += parseFloat(billableWeight);
-  }
-  return { weight, dimensionalWeight, chargedWeight };
-}
+// One charged-weight formula for the whole backend (utils/pricing.js)
+const { calculateWeights } = require("./pricing");
 
 function journeyTrack(deliverytype) {
 const direct = [
@@ -503,13 +480,13 @@ function calculateTotalValues(objectsArray) {
   };
 
   // Iterate through each object in the array
+  // DECIMAL columns come back as strings: add them as numbers
   objectsArray.forEach(data => {
-    // Add values to totals
-    totals.weight += data.actualWeight || 0;
-    totals.length += data.actualLength || 0;
-    totals.width += data.actualWidth || 0;
-    totals.height += data.actualHeight || 0;
-    totals.volume += data.actualVolume || 0;
+    totals.weight += Number(data.actualWeight) || 0;
+    totals.length += Number(data.actualLength) || 0;
+    totals.width += Number(data.actualWidth) || 0;
+    totals.height += Number(data.actualHeight) || 0;
+    totals.volume += Number(data.actualVolume) || 0;
   });
 
   // Return the totals object

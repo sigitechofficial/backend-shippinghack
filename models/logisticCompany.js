@@ -19,8 +19,14 @@ module.exports = (sequelize, DataTypes) =>{
             type: DataTypes.FLOAT,
             allowNull: true,
         },
+        // size-weight divisor in in³ per lb (139 for FedEx/UPS)
         divisor: {
-            type: DataTypes.INTEGER,
+            type: DataTypes.DECIMAL(12,4),
+            // a number in responses (the apps read it as a number)
+            get() {
+                const v = this.getDataValue('divisor');
+                return v === null || v === undefined ? v : Number(v);
+            },
             allowNull: true,
         },
         standardCharges: {

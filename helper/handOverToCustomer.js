@@ -1192,7 +1192,7 @@ module.exports = function (email,name,orderNumber,packeges,company,consolidation
                                                 mso-line-height-alt: 19.2px;
                                               "
                                             >
-                                              <p style="margin: 0">${billableWeight} lbs</p>
+                                              <p style="margin: 0">${billableWeight}</p>
                                             </div>
                                           </td>
                                         </tr>

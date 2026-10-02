@@ -21,22 +21,22 @@ module.exports = (sequelize, DataTypes) =>{
             defaultValue: ''  
         },
         weight: {
-            type: DataTypes.DECIMAL(12,2),
+            type: DataTypes.DECIMAL(14,4),
             allowNull: true,
             defaultValue: '0'
         },
         length: {
-            type: DataTypes.DECIMAL(12,2),
+            type: DataTypes.DECIMAL(14,4),
             allowNull: true,
             defaultValue: '0'
         },
         width: {
-            type: DataTypes.DECIMAL(12,2),
+            type: DataTypes.DECIMAL(14,4),
             allowNull: true,
             defaultValue: '0'
         },
         height: {
-            type: DataTypes.DECIMAL(12,2),
+            type: DataTypes.DECIMAL(14,4),
             allowNull: true,
             defaultValue: '0'
         },
@@ -78,22 +78,22 @@ module.exports = (sequelize, DataTypes) =>{
             defaultValue:'pending',
         },
         actualWeight: {
-            type: DataTypes.DECIMAL(12,2),
+            type: DataTypes.DECIMAL(14,4),
             allowNull: true,
             defaultValue: '0'
         },
         actualLength: {
-            type: DataTypes.DECIMAL(12,2),
+            type: DataTypes.DECIMAL(14,4),
             allowNull: true,
             defaultValue: '0'
         },
         actualWidth: {
-            type: DataTypes.DECIMAL(12,2),
+            type: DataTypes.DECIMAL(14,4),
             allowNull: true,
             defaultValue: '0'
         },
         actualHeight: {
-            type: DataTypes.DECIMAL(12,2),
+            type: DataTypes.DECIMAL(14,4),
             allowNull: true,
             defaultValue: '0'
         },

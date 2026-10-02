@@ -107,6 +107,20 @@ const {
   convertToBaseUnits,
 } = require("../utils/unitsManagement");
 const { virtualBox } = require("./warehouse");
+const {
+  currentUnits,
+  toBase,
+  fromBase,
+  volumeToBase,
+  volumeFromBase,
+  divisorFromBase,
+  divisorToBase,
+  divisorUnit,
+  packagesInUnits,
+  num,
+  round,
+} = require("../utils/units");
+const { calculateWeights, chargedWeightOf } = require("../utils/pricing");
 const { round2, driverBalance, driverBalances } = require("../utils/ledger");
 const { title } = require("process");
 // Defining the account for sending email
@@ -1883,10 +1897,8 @@ async function addVehicle(req, res) {
     weightCapacity,
     units.conversionRate.weight
   );
-  volumeCapacity = convertToBaseUnits(
-    volumeCapacity,
-    units.conversionRate.length
-  );
+  // a volume: converted with the length rate cubed (in³)
+  volumeCapacity = volumeToBase(volumeCapacity, units.conversionRate.length);
   const vehicleExist = await vehicleType.findOne({
     where: { title, status: true },
   });
@@ -1928,7 +1940,7 @@ async function getAllVehicle(req,res){
  
     for (let vehicleType of vehicleData) {
       vehicleType.weightCapacity =  unitsConversion(vehicleType.weightCapacity, units.conversionRate.weight);
-      vehicleType.volumeCapacity =  unitsConversion(vehicleType.volumeCapacity, units.conversionRate.length);
+      vehicleType.volumeCapacity =  volumeFromBase(vehicleType.volumeCapacity, units.conversionRate.length);
     }
     return res.json(returnFunction('1', 'All Vehicles Types', {vehicleData, unit: units.symbol}, ''));
 }
@@ -1953,10 +1965,8 @@ async function updateVehicle(req, res) {
     weightCapacity,
     units.conversionRate.weight
   );
-  volumeCapacity = convertToBaseUnits(
-    volumeCapacity,
-    units.conversionRate.length
-  );
+  // a volume: converted with the length rate cubed (in³)
+  volumeCapacity = volumeToBase(volumeCapacity, units.conversionRate.length);
 
   const vehicleExist = await vehicleType.findOne({
     where: { title, status: true, id: { [Op.not]: vehicleId } },
@@ -2179,19 +2189,19 @@ async function getAllUnits(req, res) {
   //?Improve
   //status:true is removed from all units.findall()
   const lengthData = await units.findAll({
-    where: { type: "length" },
+    where: { type: "length", deleted: false },
     attributes: ["id", "type", "name", "symbol", "conversionRate"],
   });
   const weightData = await units.findAll({
-    where: { type: "weight" },
+    where: { type: "weight", deleted: false },
     attributes: ["id", "type", "name", "symbol", "conversionRate"],
   });
   const distanceData = await units.findAll({
-    where: { type: "distance" },
+    where: { type: "distance", deleted: false },
     attributes: ["id", "type", "name", "symbol", "conversionRate"],
   });
   const currencyData = await units.findAll({
-    where: { type: "currency" },
+    where: { type: "currency", deleted: false },
     attributes: ["id", "type", "name", "symbol", "conversionRate"],
   });
   const output = {
@@ -2201,6 +2211,87 @@ async function getAllUnits(req, res) {
     currency: currencyData,
   };
   return res.json(returnFunction("1", "All Units", output, ""));
+}
+
+/*
+ *        4. Unit settings: the weight, size and distance units everyone types and sees.
+ *           The database keeps lb / in / km; a new setting applies to new entries,
+ *           existing orders keep the units they were created with.
+ */
+const UNIT_CHOICES = {
+  weight: [
+    { symbol: "lb", label: "Pounds (lb)" },
+    { symbol: "kg", label: "Kilograms (kg)" },
+  ],
+  length: [
+    { symbol: "in", label: "Inches (in)" },
+    { symbol: "cm", label: "Centimetres (cm)" },
+  ],
+  distance: [
+    { symbol: "km", label: "Kilometres (km)" },
+    { symbol: "mi", label: "Miles (mi)" },
+  ],
+};
+
+async function unitRow(type, symbol) {
+  return units.findOne({
+    where: { type, symbol, status: true, deleted: false },
+    order: [["id", "DESC"]],
+  });
+}
+
+async function getUnitSettings(req, res) {
+  const u = await currentUnits();
+  return res.json(
+    returnFunction(
+      "1",
+      "Unit settings",
+      {
+        current: u.symbol,
+        choices: UNIT_CHOICES,
+        divisorUnit: divisorUnit(u),
+      },
+      ""
+    )
+  );
+}
+
+async function updateUnitSettings(req, res) {
+  const current = await appUnits.findOne({
+    where: { status: true, deleted: false },
+    order: [["id", "DESC"]],
+  });
+  const u = await currentUnits();
+  const next = {};
+  for (const type of ["weight", "length", "distance"]) {
+    const symbol = req.body[type] || u.symbol[type];
+    if (!UNIT_CHOICES[type].some((c) => c.symbol === symbol)) {
+      const msg = `Unknown ${type} unit: ${symbol}`;
+      throw new CustomException(msg, msg);
+    }
+    const row = await unitRow(type, symbol);
+    if (!row) {
+      const msg = `The ${symbol} unit is missing. Please run the units SQL first.`;
+      throw new CustomException(msg, msg);
+    }
+    next[`${type}UnitId`] = row.id;
+  }
+  if (
+    current &&
+    current.weightUnitId === next.weightUnitId &&
+    current.lengthUnitId === next.lengthUnitId &&
+    current.distanceUnitId === next.distanceUnitId
+  ) {
+    return res.json(returnFunction("1", "Units unchanged", { current: u.symbol }, ""));
+  }
+  await appUnits.update({ status: false }, { where: {} });
+  await appUnits.create({
+    ...next,
+    currencyUnitId: current ? current.currencyUnitId : null,
+    status: true,
+  });
+  const saved = await currentUnits();
+  return res.json(returnFunction("1", "Units saved", { current: saved.symbol }, ""));
 }
 
 // ! Module 13. Support
@@ -3983,21 +4074,14 @@ async function orderDetatils(req, res) {
     // return res.json(bookingData);
     const bookingId = bookingData.id;
     const units=await unitsSymbolsAndRates(bookingData.appUnitId);
-
-    for(obj of bookingData.packages){
-      obj.weight=unitsConversion(obj.weight,units.conversionRate.weight);
-      obj.length=unitsConversion(obj.length,units.conversionRate.length);
-      obj.width=unitsConversion(obj.width,units.conversionRate.length);
-      obj.height=unitsConversion(obj.height,units.conversionRate.length);
-      obj.volume=unitsConversion(obj.volume,units.conversionRate.length);
-      //TODO pending for actual weight and lenghts
-    }
+    // charged weights from the stored (base lb) values, before converting for display
+    const baseCharged = chargedWeightOf(bookingData);
+    const packagesCharged = calculateWeights(bookingData.packages, bookingData.logisticCompany?.divisor).chargedWeight;
+    packagesInUnits(bookingData.packages, units.conversionRate);
     
     let dType = 'selfPickup';
     if(bookingData.deliveryTypeId == 1){
-        const totalWeight = calculateWeights(bookingData.packages,bookingData.logisticCompany.divisor);
- 
-        if (totalWeight.chargedWeight < 1000) {
+        if (packagesCharged < 1000) {
             dType = 'direct';
         }else if(bookingData.deliveryTypeId == 2 && bookingData.customerId == null){
             dType = 'warehouseSelf'; // if created from warehouse and type is selfpickup
@@ -4169,19 +4253,16 @@ async function orderDetatils(req, res) {
           bookingData.height,
           systemUnits.conversionRate.length
         ),
-        volume: unitsConversion(
+        volume: volumeFromBase(
           bookingData.volume,
           systemUnits.conversionRate.length
         ),
       }
-      const  weight = calculateWeights([{actualWeight: bookingData.weight,actualVolume:bookingData.volume}],bookingData.logisticCompany.divisor)
-      outObj.chargedWeight = weight.chargedWeight;
-    }else{
-      const  weight = calculateWeights(bookingData.packages,bookingData.logisticCompany.divisor)
-      outObj.chargedWeight = weight.chargedWeight;
     }
+    // shown in the booking's units; the Direct rule compares the base value (lb)
+    outObj.chargedWeight = unitsConversion(baseCharged, systemUnits.conversionRate.weight);
 
-    if(bookingData.deliveryTypeId === 1 && outObj.chargedWeight > 1000){
+    if(bookingData.deliveryTypeId === 1 && baseCharged > 1000){
       outObj.ricoAddress ={
         address: `${bookingData.deliveryWarehouse.addressDB.streetAddress} ${bookingData.deliveryWarehouse.addressDB.district} ${bookingData.deliveryWarehouse.addressDB.city} ${bookingData.deliveryWarehouse.addressDB.province} ${bookingData.deliveryWarehouse.addressDB.country} ${bookingData.deliveryWarehouse.addressDB.postalCode} `,
         lat: bookingData.deliveryWarehouse.addressDB.lat,
@@ -5227,16 +5308,33 @@ async function updateRoleStatus(req, res) {
  */
 async function getLogCompanies(req, res) {
   const LogCompanies = await logisticCompany.findAll({
-    // attributes: ['key', 'id', 'information', 'value']
+    where: { deleted: false },
+    order: [["id", "ASC"]],
   });
-
+  // the size-weight divisor is stored as in³ per lb and shown in the chosen units
+  const u = await currentUnits();
+  for (const c of LogCompanies) {
+    c.dataValues.divisor = divisorFromBase(c.divisor, u);
+    c.dataValues.divisorUnit = divisorUnit(u);
+  }
   return res.json(returnFunction("1", "Logistic companies", LogCompanies, ""));
+}
+
+// Divisor typed in the chosen units → stored in³ per lb
+async function divisorInput(value) {
+  const d = Number(value);
+  if (!Number.isFinite(d) || d <= 0) {
+    const msg = "Please enter a divisor greater than 0.";
+    throw new CustomException(msg, msg);
+  }
+  return divisorToBase(d, await currentUnits());
 }
 /*
  *    1.2 Add Logistic company
  */
 async function addLogCompany(req, res) {
-  const { title, description, flashCharges, standardCharges ,divisor } = req.body;
+  const { title, description, flashCharges, standardCharges } = req.body;
+  const divisor = await divisorInput(req.body.divisor);
   const companyExist = await logisticCompany.findOne({
     where: { title, status: true },
   });
@@ -5274,6 +5372,13 @@ async function addLogCompany(req, res) {
  */
 async function updateLogCompany(req, res) {
   const { cId, updateImage, ...data } = req.body;
+  if (data.divisor !== undefined) {
+    // unchanged in the form (shown rounded) → keep the stored value exactly
+    const stored = await logisticCompany.findByPk(cId, { attributes: ["divisor"] });
+    const u = await currentUnits();
+    if (stored && Math.abs(divisorFromBase(stored.divisor, u) - Number(data.divisor)) < 0.005) delete data.divisor;
+    else data.divisor = await divisorInput(data.divisor);
+  }
   if (data.title) {
     const companyExist = await logisticCompany.findOne({
       where: { title: data.title, status: true, id: { [Op.not]: cId } },
@@ -5317,81 +5422,239 @@ async function changeLogCompanyStatus(req, res) {
 
 
 /*
-            5. Get Charges for a Logistic Company
+            5–9. Rate bands of a logistic company
+    A band prices charged weights above its From and up to its To, at a price per unit of
+    charged weight, for International or Local orders. Stored per lb; typed and shown in
+    the weight unit the admin chose. A company's active bands of one type must not
+    overlap and must not leave gaps between them.
 */
-async function getChargesForLog(req,res){
-  let condition={};
-  condition.status=true;
-  condition.deleted=false;
-  if(req.query.logisticCompanyId)condition.logisticCompanyId=req.query.logisticCompanyId
-  console.log("🚀 ~ getChargesForLog ~ req.query.logisticCompanyId:", req.query.logisticCompanyId)
-  console.log("condition",condition);
-  
-  if(req.query.flash)condition.flash=req.query.flash
-  const charges=await logisticCompanyCharges.findAll({where:
-    condition,include:{model:logisticCompany,attributes:['id','title']}})
-  return res.json(
-    returnFunction("1","success",{charges},'')
-  )
+const BAND_TYPES = ["International", "Local"];
+
+const bandFail = (message) => {
+  throw new CustomException(message, message);
+};
+
+function bandOut(b, u) {
+  return {
+    id: b.id,
+    logisticCompanyId: b.logisticCompanyId,
+    logisticCompany: b.logisticCompany,
+    bookingType: b.bookingType,
+    startValue: fromBase(b.startValue, u.rate.weight),
+    endValue: fromBase(b.endValue, u.rate.weight),
+    // price per unit shown (per kg = per lb × lb in a kg)
+    charges: round(num(b.charges) * u.rate.weight, 4),
+    ETA: b.ETA || "",
+    status: !!b.status,
+    flash: !!b.flash,
+  };
 }
 
-
-/*
-            6. update Charges for a Logistic Company
-*/
-async function updateChargesForLog(req,res){
-  const {id,...data}=req.body;
-  const updated = await logisticCompanyCharges.update(data,{where:{id}})
-  if(!updated[0])
-  throw CustomException("logistic Company not found", "Please enter valid data");
-  return res.json(
-    returnFunction("1","data Updated Successfully",{},'')
-  )
- 
+// Gaps between a company's active bands of one type, in the units shown
+function bandGaps(rows, u) {
+  const gaps = [];
+  const groups = {};
+  for (const b of rows) {
+    if (!b.status) continue;
+    const key = `${b.logisticCompanyId}|${String(b.bookingType).toLowerCase()}`;
+    (groups[key] = groups[key] || []).push(b);
+  }
+  const tol = 0.01 * u.rate.weight;
+  for (const list of Object.values(groups)) {
+    list.sort((a, b) => num(a.startValue) - num(b.startValue));
+    const first = list[0];
+    if (num(first.startValue) > tol) {
+      gaps.push({ logisticCompanyId: first.logisticCompanyId, bookingType: first.bookingType, from: 0, to: fromBase(first.startValue, u.rate.weight) });
+    }
+    for (let i = 1; i < list.length; i++) {
+      const prevEnd = num(list[i - 1].endValue);
+      const start = num(list[i].startValue);
+      if (start > prevEnd + tol) {
+        gaps.push({
+          logisticCompanyId: first.logisticCompanyId,
+          bookingType: first.bookingType,
+          from: fromBase(prevEnd, u.rate.weight),
+          to: fromBase(start, u.rate.weight),
+        });
+      }
+    }
+  }
+  return gaps;
 }
 
-
-/*
-            7. Add Charges for a Logistic Company
-*/
-async function addChargesForLog(req,res){
-  const {startValue,endValue,charges,flash,logisticCompanyId,bookingType} = req.body
-  const newCharges = await logisticCompanyCharges.create({startValue,endValue,charges,flash,logisticCompanyId})
-  // if(!updated[0])
-  // throw CustomException("logistic Company not found", "Please enter valid data");
-  return res.json(
-    returnFunction("1","New Charges Added Succeessfully",{newCharges},'')
-  )
- 
+// A band typed by the admin (units shown) → base units
+function bandInput(body, u) {
+  const from = Number(body.startValue);
+  const to = Number(body.endValue);
+  const price = Number(body.charges);
+  const w = u.symbol.weight;
+  if (body.startValue === "" || !Number.isFinite(from) || from < 0) bandFail(`From must be 0 ${w} or more.`);
+  if (body.endValue === "" || !Number.isFinite(to) || to <= from) bandFail("To must be more than From.");
+  if (!Number.isFinite(price) || price <= 0) bandFail(`Price per ${w} must be more than 0.`);
+  const bookingType = BAND_TYPES.find((t) => t.toLowerCase() === String(body.bookingType || "").toLowerCase());
+  if (!bookingType) bandFail("Choose International or Local.");
+  return {
+    startValue: toBase(from, u.rate.weight),
+    endValue: toBase(to, u.rate.weight),
+    charges: round(price / u.rate.weight, 4),
+    bookingType,
+    ETA: String(body.ETA || "").trim() || null,
+  };
 }
 
+// Checks a company's active bands of one type after a change: `changed` is the band
+// being saved as active ({ id?, startValue, endValue } in base units), `removedId` a band
+// being turned off or deleted. Overlaps are refused, and so is a gap next to the changed
+// or removed band. A From/To within a hundredth of a unit of its neighbour snaps to it.
+async function checkBands(companyId, bookingType, u, { changed = null, removedId = null } = {}) {
+  const rows = await logisticCompanyCharges.findAll({
+    where: { logisticCompanyId: companyId, bookingType, status: true, deleted: false },
+  });
+  const tol = 0.01 * u.rate.weight;
+  const show = (v) => `${fromBase(v, u.rate.weight)} ${u.symbol.weight}`;
+  const others = rows
+    .filter((b) => b.id !== changed?.id && b.id !== removedId)
+    .map((b) => ({ id: b.id, start: num(b.startValue), end: num(b.endValue) }));
 
-/*
-            8. Update Status of Charges for a Logistic Company
-*/
-async function updateStatusChargesForLog(req,res){
-  const {id,status} = req.body
-  const updated = await logisticCompanyCharges.update({status},{where:{id}})
-  if(!updated[0])
-  throw CustomException("logistic Company not found", "Please enter valid data");
-  return res.json(
-    returnFunction("1","Updated Succeessfully",{},'')
-  )
- 
+  if (removedId) {
+    const before = rows
+      .filter((b) => b.id !== changed?.id)
+      .map((b) => ({ start: num(b.startValue), end: num(b.endValue), id: b.id }))
+      .sort((a, b) => a.start - b.start);
+    const i = before.findIndex((b) => b.id === removedId);
+    if (i > 0 && i < before.length - 1) {
+      bandFail(
+        `This would leave a gap from ${show(before[i].start)} to ${show(before[i].end)}. ` +
+          "Turn off or delete the first or last band only, or change the next band's From first."
+      );
+    }
+    return null;
+  }
+
+  const band = { start: changed.startValue, end: changed.endValue };
+  for (const o of others) {
+    if (band.start < o.end - tol && band.end > o.start + tol) {
+      bandFail(`This band overlaps the ${show(o.start)} – ${show(o.end)} band.`);
+    }
+  }
+  const prev = others.filter((o) => o.end <= band.start + tol).sort((a, b) => b.end - a.end)[0];
+  const next = others.filter((o) => o.start >= band.end - tol).sort((a, b) => a.start - b.start)[0];
+  if (prev) {
+    if (band.start > prev.end + tol) {
+      bandFail(`There would be a gap from ${show(prev.end)} to ${show(band.start)}. Start this band at ${show(prev.end)}.`);
+    }
+    band.start = prev.end;
+  }
+  if (next) {
+    if (band.end < next.start - tol) {
+      bandFail(`There would be a gap from ${show(band.end)} to ${show(next.start)}. End this band at ${show(next.start)}.`);
+    }
+    band.end = next.start;
+  }
+  return { startValue: band.start, endValue: band.end };
 }
 
-/*
-            9. Delete Charges for a Logistic Company
-*/
-async function deleteChargesForLog(req,res){
-  const {chargeId} = req.body
-  const updated = await logisticCompanyCharges.update({deleted:true},{where:{id:chargeId}})
-  if(!updated[0])
-  throw CustomException("logistic Company not found", "Please enter valid data");
+async function getChargesForLog(req, res) {
+  const u = await currentUnits();
+  const where = { deleted: false };
+  if (req.query.logisticCompanyId) where.logisticCompanyId = req.query.logisticCompanyId;
+  if (req.query.bookingType) where.bookingType = req.query.bookingType;
+  const rows = await logisticCompanyCharges.findAll({
+    where,
+    include: { model: logisticCompany, attributes: ["id", "title"] },
+    order: [
+      ["bookingType", "ASC"],
+      ["startValue", "ASC"],
+    ],
+  });
   return res.json(
-    returnFunction("1","Updated Succeessfully",{},'')
-  )
- 
+    returnFunction(
+      "1",
+      "success",
+      {
+        charges: rows.map((b) => bandOut(b, u)),
+        gaps: bandGaps(rows, u),
+        unit: { weight: u.symbol.weight, currency: u.symbol.currency },
+      },
+      ""
+    )
+  );
+}
+
+async function updateChargesForLog(req, res) {
+  const u = await currentUnits();
+  const band = await logisticCompanyCharges.findOne({ where: { id: req.body.id, deleted: false } });
+  if (!band) bandFail("Rate not found.");
+  const data = bandInput(req.body, u);
+  // values left as shown (rounded) keep the stored number exactly
+  const same = (typed, shown) => Math.abs(Number(typed) - shown) < 0.005;
+  if (same(req.body.startValue, fromBase(band.startValue, u.rate.weight))) data.startValue = num(band.startValue);
+  if (same(req.body.endValue, fromBase(band.endValue, u.rate.weight))) data.endValue = num(band.endValue);
+  if (same(req.body.charges, round(num(band.charges) * u.rate.weight, 4))) data.charges = num(band.charges);
+  if (band.status) {
+    if (data.bookingType.toLowerCase() !== String(band.bookingType).toLowerCase()) {
+      // moving it to the other type removes it from this type's bands
+      await checkBands(band.logisticCompanyId, band.bookingType, u, { removedId: band.id });
+    }
+    Object.assign(
+      data,
+      await checkBands(band.logisticCompanyId, data.bookingType, u, {
+        changed: { id: band.id, startValue: data.startValue, endValue: data.endValue },
+      })
+    );
+  }
+  await band.update(data);
+  return res.json(returnFunction("1", "Rate saved", { charge: bandOut(band, u) }, ""));
+}
+
+async function addChargesForLog(req, res) {
+  const u = await currentUnits();
+  const company = await logisticCompany.findOne({ where: { id: req.body.logisticCompanyId, deleted: false } });
+  if (!company) bandFail("Logistic company not found.");
+  const data = bandInput(req.body, u);
+  Object.assign(
+    data,
+    await checkBands(company.id, data.bookingType, u, {
+      changed: { startValue: data.startValue, endValue: data.endValue },
+    })
+  );
+  const newCharges = await logisticCompanyCharges.create({
+    ...data,
+    logisticCompanyId: company.id,
+    flash: false,
+    status: true,
+    deleted: false,
+  });
+  return res.json(returnFunction("1", "Rate added", { newCharges: bandOut(newCharges, u) }, ""));
+}
+
+async function updateStatusChargesForLog(req, res) {
+  const { id } = req.body;
+  const status = req.body.status === true || req.body.status === "true" || req.body.status === 1 || req.body.status === "1";
+  const u = await currentUnits();
+  const band = await logisticCompanyCharges.findOne({ where: { id, deleted: false } });
+  if (!band) bandFail("Rate not found.");
+  if (status && !band.status) {
+    await checkBands(band.logisticCompanyId, band.bookingType, u, {
+      changed: { id: band.id, startValue: num(band.startValue), endValue: num(band.endValue) },
+    });
+  } else if (!status && band.status) {
+    await checkBands(band.logisticCompanyId, band.bookingType, u, { removedId: band.id });
+  }
+  await band.update({ status });
+  return res.json(returnFunction("1", status ? "Rate turned on" : "Rate turned off", {}, ""));
+}
+
+async function deleteChargesForLog(req, res) {
+  const id = req.body.chargeId ?? req.body.id;
+  const u = await currentUnits();
+  const band = await logisticCompanyCharges.findOne({ where: { id, deleted: false } });
+  if (!band) bandFail("Rate not found.");
+  if (band.status) {
+    await checkBands(band.logisticCompanyId, band.bookingType, u, { removedId: band.id });
+  }
+  await band.update({ deleted: true });
+  return res.json(returnFunction("1", "Rate deleted", {}, ""));
 }
 
 
@@ -6825,32 +7088,6 @@ function journeyTrack(deliverytype) {
   }
 
 
-  function calculateWeights(packages , divisor) {
-
-    let weight = 0; 
-    let dimensionalWeight = 0;
-    let chargedWeight = 0;
-    let devider = parseFloat(divisor);
-  
-    for (let index = 0; index < packages.length; index++) {
-      let package = packages[index];
-      let Weightcharges = 0;
-      let billableWeight;
-  
-      weight += parseFloat(package.actualWeight);
-      dimensionalWeight += parseFloat(package.actualVolume)/devider;
-  
-      if (parseFloat(package.actualWeight) > dimensionalWeight) {
-        billableWeight = parseFloat(package.actualWeight);
-      } else if (dimensionalWeight > parseFloat(package.actualWeight)) {
-        billableWeight = dimensionalWeight;
-      }
-  
-      chargedWeight += parseFloat(billableWeight);
-    }
-    return { weight, dimensionalWeight, chargedWeight };
-  }
-
 //!===============================================================================================================================================================>>
 
 module.exports = {
@@ -6931,6 +7168,8 @@ module.exports = {
   addAppUnit,
   currentSystemUnits,
   getAllUnits,
+  getUnitSettings,
+  updateUnitSettings,
   // Support
   getSupport,
   updateSupport,

@@ -60,12 +60,19 @@ const {
 } = require("../models");
 const getDistance = require("../utils/distanceCalculator");
 const { bandFor } = require("../utils/distanceBands");
-// The calculator returns km (the unit distance bands are stored in); the driver app
-// labels job distances in miles, so driver-facing distances are sent in miles.
-const KM_PER_MILE = 1.609344;
-async function distanceInMiles(lat1, lng1, lat2, lng2) {
+const { currentUnits, unitsFor, fromBase, volumeFromBase } = require("../utils/units");
+const { calculateWeights } = require("../utils/pricing");
+// The calculator returns km (the unit distance bands are stored in); drivers see
+// distances in the distance unit the admin chose (km or mi).
+async function distanceShown(lat1, lng1, lat2, lng2) {
   const km = await getDistance(lat1, lng1, lat2, lng2);
-  return parseFloat((km / KM_PER_MILE).toFixed(2));
+  const u = await currentUnits();
+  return fromBase(km, u.rate.distance);
+}
+// A job's weight (what the warehouse measured) in the booking's units, as text
+async function jobWeight(booking) {
+  const u = await unitsFor(booking.appUnitId);
+  return { weight: fromBase(booking.weight, u.rate.weight).toFixed(2), weightUnit: u.symbol.weight };
 }
 // Importing Custom exception
 const CustomException = require("../middleware/errorObject");
@@ -165,33 +172,6 @@ function sortJobs(jobs, jobType) {
   return sortedJobs;
 }
 
-//! function for calculating Total Weight, Total Dimenssional Weight and charged weight
-async function calculateWeights(packages, divisor) {
-  let weight = 0;
-  let dimensionalWeight = 0;
-  let chargedWeight = 0;
-
-  for (let index = 0; index < packages.length; index++) {
-    let package = packages[index];
-    let Weightcharges = 0;
-    let billableWeight;
-
-    weight += Number(package.actualWeight);
-    dimensionalWeight += Number(package.actualVolume) / divisor;
-
-    if (package.actualWeight > package.actualVolume / divisor) {
-      billableWeight = Number(package.actualWeight);
-    } else if (
-      Number(package.volume) / divisor >
-      Number(package.actualWeight)
-    ) {
-      billableWeight = Math.ceil(Number(package.volume / divisor));
-    }
-
-    chargedWeight += Number(billableWeight);
-  }
-  return { weight, dimensionalWeight, chargedWeight };
-}
 // ! Module 1 : Auth - Driver On Boarding
 // ! _________________________________________________________________________________________________________________________________
 /*
@@ -1296,6 +1276,7 @@ async function allAssociatedJobs(req, res) {
       "height",
       "volume",
       "bookingStatusId",
+      "appUnitId",
     ],
   });
   //  return res.json(bookingData)
@@ -1323,13 +1304,13 @@ async function allAssociatedJobs(req, res) {
     await Promise.all(
       pickuped.map(async (ele) => {
         let { earning } = await getDriverEarning(ele.id, driverId, "delivery");
-        let driverDistance = (await distanceInMiles(
+        let driverDistance = (await distanceShown(
           driverLat,
           driverLng,
           ele.dropoffAddress.lat,
           ele.dropoffAddress.lng
         ))
-          ? await distanceInMiles(
+          ? await distanceShown(
               driverLat,
               driverLng,
               ele.dropoffAddress.lat,
@@ -1384,6 +1365,38 @@ async function allAssociatedJobs(req, res) {
       }
     });
     // Condition Ends Here
+  }
+  // sizes and weights in each booking's units (the database keeps lb / in), as text
+  const { symbol } = await currentUnits();
+  for (const b of bookingData || []) {
+    const u = await unitsFor(b.appUnitId);
+    const w = (v) => fromBase(v, u.rate.weight).toFixed(2);
+    const l = (v) => fromBase(v, u.rate.length).toFixed(2);
+    const v3 = (v) => volumeFromBase(v, u.rate.length).toFixed(2);
+    Object.assign(b.dataValues, {
+      weight: w(b.weight),
+      length: l(b.length),
+      width: l(b.width),
+      height: l(b.height),
+      volume: v3(b.volume),
+      weightUnit: u.symbol.weight,
+      lengthUnit: u.symbol.length,
+      distanceUnit: symbol.distance,
+    });
+    for (const p of b.packages || []) {
+      Object.assign(p.dataValues, {
+        weight: w(p.weight),
+        length: l(p.length),
+        width: l(p.width),
+        height: l(p.height),
+        volume: v3(p.volume),
+        actualWeight: w(p.actualWeight),
+        actualLength: l(p.actualLength),
+        actualWidth: l(p.actualWidth),
+        actualHeight: l(p.actualHeight),
+        actualVolume: v3(p.actualVolume),
+      });
+    }
   }
   let deliveryJobs = {
     assigned: filterBooking,
@@ -1698,7 +1711,7 @@ async function bookingDetailsById(req, res) {
     if (requ.data != null) {
       online_status = true;
       console.log(requ.data.lat, requ.data.lng, orderLat, orderLng);
-      driver_distance = await distanceInMiles(
+      driver_distance = await distanceShown(
         requ.data.lat,
         requ.data.lng,
         orderLat,
@@ -1715,7 +1728,7 @@ async function bookingDetailsById(req, res) {
     if (requ.data != null) {
       online_status = true;
       console.log(requ.data.lat, requ.data.lng, orderLat, orderLng);
-      driver_distance = await distanceInMiles(
+      driver_distance = await distanceShown(
         requ.data.lat,
         requ.data.lng,
         orderLat,
@@ -1725,13 +1738,18 @@ async function bookingDetailsById(req, res) {
     }
   }
   console.log(` eEEEEEERERERERER ${typeof driver_earning}`);
+  // sizes and weights in the booking's units (the database keeps lb / in), as text
+  const u = await unitsFor(bookingData.appUnitId);
+  const { symbol } = await currentUnits();
+  const w = (v) => fromBase(v, u.rate.weight).toFixed(2);
+  const l = (v) => fromBase(v, u.rate.length).toFixed(2);
   let Packages = [];
   bookingData.packages.map((package) => {
     let items = {
-      weight: package.actualWeight,
-      length: package.actualLength,
-      width: package.actualWidth,
-      height: package.actualHeight,
+      weight: w(package.actualWeight),
+      length: l(package.actualLength),
+      width: l(package.actualWidth),
+      height: l(package.actualHeight),
       instruction: package.note,
       category: package.category.title,
       company: package.ecommerceCompany.title,
@@ -1749,10 +1767,13 @@ async function bookingDetailsById(req, res) {
     PickUPLng: bookingData.deliveryWarehouse.addressDB.lng,
     dropoffLat: bookingData.dropoffAddress.lat,
     dropoffLng: bookingData.dropoffAddress.lng,
-    weight: bookingData.weight,
-    length: bookingData.length,
-    width: bookingData.width,
-    height: bookingData.height,
+    weight: w(bookingData.weight),
+    length: l(bookingData.length),
+    width: l(bookingData.width),
+    height: l(bookingData.height),
+    weightUnit: u.symbol.weight,
+    lengthUnit: u.symbol.length,
+    distanceUnit: symbol.distance,
     dropoffCode: `${bookingData.dropoffAddress.postalCode} `,
     distance: `${driver_distance}`,
     consolidation: bookingData.consolidation,
@@ -2153,6 +2174,7 @@ async function deliveredDelivery(req, res) {
       "consolidation",
       "trackingId",
       "total",
+      "appUnitId",
     ],
   });
   if (!bookingData)
@@ -2252,6 +2274,7 @@ async function deliveredDelivery(req, res) {
     arrived,
     bookingData.logisticCompany.divisor
   );
+  const deliveredUnits = await unitsFor(bookingData.appUnitId);
   const to = ["sigidevelopers@gmail.com"];
   let name = bookingData.receiverName;
   if (bookingData.customer) {
@@ -2275,7 +2298,7 @@ async function deliveredDelivery(req, res) {
     arrived.length,
     bookingData.logisticCompany.title,
     consolidation,
-    totalWeight.chargedWeight,
+    `${fromBase(totalWeight.chargedWeight, deliveredUnits.rate.weight)} ${deliveredUnits.symbol.weight}`,
     bookingData.total,
     bookingData.dropoffAddress
   );
@@ -2761,19 +2784,16 @@ let filterBookings = async (bookingData, driverId) => {
   await Promise.all(
     bookingData.map(async (ele) => {
       let tmpObj = {};
-      let billableWeight;
-      if (ele.weight < ele.volume / 5000) billableWeight = ele.volume / 5000;
-      else if (ele.volume / 5000 < ele.weight) billableWeight = ele.weight;
-      else if (ele.weight == "0.00" && ele.volume == "0.00")
-        billableWeight = ele.weight;
+      const { weight, weightUnit } = await jobWeight(ele);
+      const { symbol } = await currentUnits();
       let { earning } = await getDriverEarning(ele.id, driverId, "delivery");
-      let driverDistance = (await distanceInMiles(
+      let driverDistance = (await distanceShown(
         driverLat,
         driverLng,
         ele.dropoffAddress.lat,
         ele.dropoffAddress.lng
       ))
-        ? await distanceInMiles(
+        ? await distanceShown(
             driverLat,
             driverLng,
             ele.dropoffAddress.lat,
@@ -2787,13 +2807,14 @@ let filterBookings = async (bookingData, driverId) => {
         distance:
           driverDistance === "N/A" ? `${driverDistance}` : `${driverDistance}`,
         earning: `$${earning}`,
-        weight: billableWeight,
+        weight,
+        weightUnit,
         PickUpPoint: `${ele.deliveryWarehouse.addressDB.streetAddress}, ${ele.deliveryWarehouse.addressDB.city}, ${ele.deliveryWarehouse.addressDB.district}, ${ele.deliveryWarehouse.addressDB.postalCode} ${ele.deliveryWarehouse.addressDB.country}`,
         dropoffPoint: `${ele.dropoffAddress.streetAddress}, ${ele.dropoffAddress.city}, ${ele.dropoffAddress.district}, ${ele.dropoffAddress.postalCode} ${ele.dropoffAddress.country}`,
         pickupCode: `${ele.deliveryWarehouse.addressDB.postalCode}`,
         dropoffCode: `${ele.dropoffAddress.postalCode}`,
         bookingStatus: ele.bookingStatusId,
-        distanceUnit: "miles",
+        distanceUnit: symbol.distance,
       };
       //if(secondsDifference === 0) return null;
       jobs.push(tmpObj);
@@ -2830,11 +2851,9 @@ let filterBookingsOnCapacity = async (
       let tmpObj = {};
       if (ele.weight > weightCapacity && ele.volume > volumeCapacity) {
       } else {
-        let billableWeight;
-        if (ele.weight < ele.volume / 5000) billableWeight = ele.volume / 5000;
-        else if (ele.volume / 5000 < ele.weight) billableWeight = ele.weight;
-        else if (ele.weight == "0.00" && ele.volume == "0.00")
-          billableWeight = ele.weight;
+        // the measured weight: what the driver carries
+        const { weight, weightUnit } = await jobWeight(ele);
+        const { symbol } = await currentUnits();
 
         let { earning, matched } = await getDriverEarning(
           ele.id,
@@ -2843,13 +2862,13 @@ let filterBookingsOnCapacity = async (
         );
         // jobs outside the driver's vehicle-type bands aren't offered
         if (matched) {
-          let driverDistance = (await distanceInMiles(
+          let driverDistance = (await distanceShown(
             driverLat,
             driverLng,
             ele.dropoffAddress.lat,
             ele.dropoffAddress.lng
           ))
-            ? await distanceInMiles(
+            ? await distanceShown(
                 driverLat,
                 driverLng,
                 ele.dropoffAddress.lat,
@@ -2865,12 +2884,13 @@ let filterBookingsOnCapacity = async (
                 ? `${driverDistance}`
                 : `${driverDistance}`,
             earning: `$${earning}`,
-            weight: billableWeight,
+            weight,
+            weightUnit,
             PickUpPoint: `${ele.deliveryWarehouse.addressDB.streetAddress}, ${ele.deliveryWarehouse.addressDB.city}, ${ele.deliveryWarehouse.addressDB.district}, ${ele.deliveryWarehouse.addressDB.postalCode} ${ele.deliveryWarehouse.addressDB.country}`,
             dropoffPoint: `${ele.dropoffAddress.streetAddress}, ${ele.dropoffAddress.city}, ${ele.dropoffAddress.district}, ${ele.dropoffAddress.postalCode} ${ele.dropoffAddress.country}`,
             pickupCode: `${ele.deliveryWarehouse.addressDB.postalCode}`,
             dropoffCode: `${ele.dropoffAddress.postalCode}`,
-            distanceUnit: "miles",
+            distanceUnit: symbol.distance,
           };
 
           //if(secondsDifference === 0) return null;
@@ -2952,7 +2972,7 @@ if (checkDeliveryBooking.length === 0) {
         ],
       },
     ],
-    attributes: ["id", "trackingId", "weight", "volume", "distance"],
+    attributes: ["id", "trackingId", "weight", "volume", "distance", "appUnitId"],
   });
 } else {
     console.log("Going into else==========================>")
@@ -3015,7 +3035,7 @@ if (checkDeliveryBooking.length === 0) {
         ],
       },
     ],
-    attributes: ["id", "trackingId", "weight", "volume", "distance"],
+    attributes: ["id", "trackingId", "weight", "volume", "distance", "appUnitId"],
   });
 }
 

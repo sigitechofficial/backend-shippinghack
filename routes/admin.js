@@ -4258,6 +4258,9 @@ router.get('/currentsystemunits', validateToken, checkPermission, asyncMiddlewar
  */
 
 router.get('/getallunits', validateToken, checkPermission, asyncMiddleware(adminController.getAllUnits)); 
+// weight / size / distance units everyone types and sees
+router.get('/unitsettings', validateToken, checkPermission, asyncMiddleware(adminController.getUnitSettings));
+router.put('/unitsettings', validateToken, checkPermission, asyncMiddleware(adminController.updateUnitSettings));
 //4. Get unit types addUnit
 /**
  * @swagger

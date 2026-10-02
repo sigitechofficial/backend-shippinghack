@@ -1394,6 +1394,8 @@ router.get('/homepage', validateToken, asyncMiddleware(userController.homepage))
  */
 
 router.post('/shippingCalculater', asyncMiddleware(userController.shippingCalculater))
+// units the customer types and sees, with the package limits in those units (no login)
+router.get('/units', asyncMiddleware(userController.unitsInfo))
 // 2. Get all required IDs 
 router.get('/idsforbooking', validateToken, asyncMiddleware(userController.idsForBooking))
 // 3. get Charges

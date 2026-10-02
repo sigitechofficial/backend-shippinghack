@@ -99,22 +99,22 @@ module.exports = (sequelize, DataTypes) =>{
             allowNull: true,
         },
         weight: {
-            type: DataTypes.DECIMAL(8,2),
+            type: DataTypes.DECIMAL(10,4),
             allowNull: true,
             defaultValue: '0'
         },
         length: {
-            type: DataTypes.DECIMAL(8,2),
+            type: DataTypes.DECIMAL(10,4),
             allowNull: true,
             defaultValue: '0'
         },
         width: {
-            type: DataTypes.DECIMAL(8,2),
+            type: DataTypes.DECIMAL(10,4),
             allowNull: true,
             defaultValue: '0'
         },
         height: {
-            type: DataTypes.DECIMAL(8,2),
+            type: DataTypes.DECIMAL(10,4),
             allowNull: true,
             defaultValue: '0'
         },

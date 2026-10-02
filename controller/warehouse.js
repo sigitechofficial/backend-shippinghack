@@ -123,6 +123,14 @@ const transporter = require("../helper/transporter");
 const fedex = require('../controller/fedex');
 const { recordDriverEarning, recordAdminEarning } = require("../utils/ledger");
 const arrived = require("../helper/arrived");
+const { volumeFromBase, unitsFor, fromBase, packagesInUnits } = require("../utils/units");
+const { chargedWeightOf } = require("../utils/pricing");
+
+// "12.5 kg": a stored (lb) weight in a booking's units, for emails
+async function weightTextFor(appUnitId, baseLb) {
+  const u = await unitsFor(appUnitId);
+  return `${fromBase(baseLb, u.rate.weight)} ${u.symbol.weight}`;
+}
 
 
 // ! Module 1: AUTH______________________________________________________________________________________
@@ -943,7 +951,8 @@ async function getAllbookings(req, res) {
           title: obj.logisticCompany.title,
         }
         : {},
-      chargedWeight,
+      // shown in the booking's units; the Direct rule compares the base value (lb)
+      chargedWeight: unitsConversion(chargedWeight, obj.appUnit.weightUnit.conversionRate),
       deliveryStatus: chargedWeight < 1000 && obj.deliveryTypeId == 1 ? 'Direct Delivery' : 'By Warehouse Delivery',
       unit: {
         weight: obj.appUnit.weightUnit.symbol,
@@ -1093,21 +1102,14 @@ async function bookingDetailsById(req, res) {
    
     const bookingId = bookingData.id;
     const units = await unitsSymbolsAndRates(bookingData.appUnitId);
-
-    for (obj of bookingData.packages) {
-      obj.weight = unitsConversion(obj.weight, units.conversionRate.weight);
-      obj.length = unitsConversion(obj.length, units.conversionRate.length);
-      obj.width = unitsConversion(obj.width, units.conversionRate.length);
-      obj.height = unitsConversion(obj.height, units.conversionRate.length);
-      obj.volume = unitsConversion(obj.volume, units.conversionRate.length);
-      //TODO pending for actual weight and lenghts
-    }
+    // charged weights from the stored (base lb) values, before converting for display
+    const baseCharged = chargedWeightOf(bookingData);
+    const packagesCharged = calculateWeights(bookingData.packages, bookingData.logisticCompany?.divisor).chargedWeight;
+    packagesInUnits(bookingData.packages, units.conversionRate);
 
     let dType = 'selfPickup';
     if (bookingData.deliveryTypeId == 1) {
-      const totalWeight = calculateWeights(bookingData.packages, bookingData.logisticCompany.divisor);
-
-      if (totalWeight.chargedWeight < 1000) {
+      if (packagesCharged < 1000) {
         dType = 'direct';
       } else if (bookingData.deliveryTypeId == 2 && bookingData.customerId == null) {
         dType = 'warehouseSelf'; // if created from warehouse and type is selfpickup
@@ -1279,19 +1281,16 @@ async function bookingDetailsById(req, res) {
           bookingData.height,
           systemUnits.conversionRate.length
         ),
-        volume: unitsConversion(
+        volume: volumeFromBase(
           bookingData.volume,
           systemUnits.conversionRate.length
         ),
       }
-      const weight = calculateWeights([{ actualWeight: bookingData.weight, actualVolume: bookingData.volume }], bookingData.logisticCompany.divisor)
-      outObj.chargedWeight = weight.chargedWeight;
-    } else {
-      const weight = calculateWeights(bookingData.packages, bookingData.logisticCompany.divisor)
-      outObj.chargedWeight = weight.chargedWeight;
     }
+    // shown in the booking's units; the Direct rule compares the base value (lb)
+    outObj.chargedWeight = unitsConversion(baseCharged, systemUnits.conversionRate.weight);
 
-    if (bookingData.deliveryTypeId === 1 && outObj.chargedWeight > 1000) {
+    if (bookingData.deliveryTypeId === 1 && baseCharged > 1000) {
       outObj.ricoAddress = {
         address: `${bookingData.deliveryWarehouse.addressDB.streetAddress} ${bookingData.deliveryWarehouse.addressDB.district} ${bookingData.deliveryWarehouse.addressDB.city} ${bookingData.deliveryWarehouse.addressDB.province} ${bookingData.deliveryWarehouse.addressDB.country} ${bookingData.deliveryWarehouse.addressDB.postalCode} `,
         lat: bookingData.deliveryWarehouse.addressDB.lat,
@@ -1417,21 +1416,14 @@ async function bookingDetailsCancelled(req, res) {
    
     const bookingId = bookingData.id;
     const units = await unitsSymbolsAndRates(bookingData.appUnitId);
-
-    for (obj of bookingData.packages) {
-      obj.weight = unitsConversion(obj.weight, units.conversionRate.weight);
-      obj.length = unitsConversion(obj.length, units.conversionRate.length);
-      obj.width = unitsConversion(obj.width, units.conversionRate.length);
-      obj.height = unitsConversion(obj.height, units.conversionRate.length);
-      obj.volume = unitsConversion(obj.volume, units.conversionRate.length);
-      //TODO pending for actual weight and lenghts
-    }
+    // charged weights from the stored (base lb) values, before converting for display
+    const baseCharged = chargedWeightOf(bookingData);
+    const packagesCharged = calculateWeights(bookingData.packages, bookingData.logisticCompany?.divisor).chargedWeight;
+    packagesInUnits(bookingData.packages, units.conversionRate);
 
     let dType = 'selfPickup';
     if (bookingData.deliveryTypeId == 1) {
-      const totalWeight = calculateWeights(bookingData.packages, bookingData.logisticCompany.divisor);
-
-      if (totalWeight.chargedWeight < 1000) {
+      if (packagesCharged < 1000) {
         dType = 'direct';
       } else if (bookingData.deliveryTypeId == 2 && bookingData.customerId == null) {
         dType = 'warehouseSelf'; // if created from warehouse and type is selfpickup
@@ -1603,19 +1595,16 @@ async function bookingDetailsCancelled(req, res) {
           bookingData.height,
           systemUnits.conversionRate.length
         ),
-        volume: unitsConversion(
+        volume: volumeFromBase(
           bookingData.volume,
           systemUnits.conversionRate.length
         ),
       }
-      const weight = calculateWeights([{ actualWeight: bookingData.weight, actualVolume: bookingData.volume }], bookingData.logisticCompany.divisor)
-      outObj.chargedWeight = weight.chargedWeight;
-    } else {
-      const weight = calculateWeights(bookingData.packages, bookingData.logisticCompany.divisor)
-      outObj.chargedWeight = weight.chargedWeight;
     }
+    // shown in the booking's units; the Direct rule compares the base value (lb)
+    outObj.chargedWeight = unitsConversion(baseCharged, systemUnits.conversionRate.weight);
 
-    if (bookingData.deliveryTypeId === 1 && outObj.chargedWeight > 1000) {
+    if (bookingData.deliveryTypeId === 1 && baseCharged > 1000) {
       outObj.ricoAddress = {
         address: `${bookingData.deliveryWarehouse.addressDB.streetAddress} ${bookingData.deliveryWarehouse.addressDB.district} ${bookingData.deliveryWarehouse.addressDB.city} ${bookingData.deliveryWarehouse.addressDB.province} ${bookingData.deliveryWarehouse.addressDB.country} ${bookingData.deliveryWarehouse.addressDB.postalCode} `,
         lat: bookingData.deliveryWarehouse.addressDB.lat,
@@ -2472,6 +2461,7 @@ async function receivedFromTransporter(req, res) {
       "bookingStatusId",
       "createdAt",
       "consolidation",
+      "appUnitId",
       "weight",
       "volume",
       "height",
@@ -2566,7 +2556,7 @@ async function receivedFromTransporter(req, res) {
           ele.customer.firstName,
           String(ele.trackingId),
           String(ele.packages.length).padStart(2, 0),
-          String(weightData.chargedWeight),
+          await weightTextFor(ele.appUnitId, weightData.chargedWeight),
           ele.logisticCompany.title,
           datePortion,
           consolidation
@@ -2589,7 +2579,7 @@ async function receivedFromTransporter(req, res) {
           ele.customer.firstName,
           String(ele.trackingId),
           String(ele.packages.length).padStart(2, 0),
-          String(weightData.chargedWeight),
+          await weightTextFor(ele.appUnitId, weightData.chargedWeight),
           ele.logisticCompany.title,
           datePortion,
           consolidation
@@ -3098,7 +3088,7 @@ async function selfPickupDelivered(req, res) {
     }
     const consolidation = bookingData.consolidation ? 'Yes' : 'No';
 
-    handOverToCustomerMail(to, name, bookingData.trackingId, arrived.length, bookingData.logisticCompany.title, consolidation, totalWeight.chargedWeight, bookingData.total)
+    handOverToCustomerMail(to, name, bookingData.trackingId, arrived.length, bookingData.logisticCompany.title, consolidation, await weightTextFor(bookingData.appUnitId, totalWeight.chargedWeight), bookingData.total)
 
 
     return res.json(returnFunction("1", "Order Completed Successfully", {}, ""));
@@ -4094,10 +4084,8 @@ async function createRemeasurement(req, res) {
     data.actualHeight,
     units.conversionRate.length
   );
-  data.actualVolume = convertToBaseUnits(
-    data.actualVolume,
-    units.conversionRate.length
-  );
+  // volume from the measured sides (in³), not the panel's number in its own units
+  data.actualVolume = data.actualLength * data.actualWidth * data.actualHeight;
   const pack = await package.findOne({
     where: {
       id: id, // Specify the primary key condition
@@ -4185,7 +4173,7 @@ async function createRemeasurement(req, res) {
           },
           { model: logisticCompany, attributes: ['title', 'divisor'] },
         ],
-        attributes: ['receiverName', 'receiverEmail', 'createdAt', 'consolidation', 'trackingId', 'total']
+        attributes: ['receiverName', 'receiverEmail', 'createdAt', 'consolidation', 'trackingId', 'total', 'appUnitId']
       });
 
       if (bookingData?.logisticCompany) {
@@ -4202,7 +4190,7 @@ async function createRemeasurement(req, res) {
         }
         const consolidation = bookingData.consolidation ? 'Yes' : 'No';
         try {
-          remeasurementMail(to, name, bookingData.trackingId, arrived.length, consolidation, totalWeight.chargedWeight)
+          remeasurementMail(to, name, bookingData.trackingId, arrived.length, consolidation, await weightTextFor(bookingData.appUnitId, totalWeight.chargedWeight))
         } catch (e) {
           console.log("Remeasurement email failed:", e.message)
         }
@@ -4276,10 +4264,8 @@ async function consolidationRemesurements(req, res) {
     data["height"],
     units.conversionRate.length
   );
-  data["volume"] = convertToBaseUnits(
-    data["volume"],
-    units.conversionRate.length
-  );
+  // volume from the measured sides (in³), not the panel's number in its own units
+  data["volume"] = data["length"] * data["width"] * data["height"];
   data.bookingStatusId = 8;
   await booking.update(data, { where: { id, consolidation: 1 } });
   const time = getDateAndTime();
@@ -4302,7 +4288,8 @@ async function consolidationRemesurements(req, res) {
   }
 
   var arrived = booked.packages.filter((ele) => ele.arrived == "arrived");
-  const totalWeight = booked.consolidation ? calculateWeights([{ actualWeight: booked.weight, actualVolume: booked.volume }], booked.logisticCompany.divisor) : calculateWeights(arrived, booked.logisticCompany.divisor);
+  // the box just measured (data), not the values read before the update
+  const totalWeight = calculateWeights([{ actualWeight: data.weight, actualVolume: data.volume }], booked.logisticCompany?.divisor);
   const to = ['sigidevelopers@gmail.com'];
   let name = booked.receiverName
   if (booked.customer) {
@@ -4313,7 +4300,7 @@ async function consolidationRemesurements(req, res) {
   }
   const consolidation = booked.consolidation ? 'Yes' : 'No';
 
-  remeasurementMail(to, name, booked.trackingId, arrived.length, consolidation, totalWeight.chargedWeight)
+  remeasurementMail(to, name, booked.trackingId, arrived.length, consolidation, await weightTextFor(booked.appUnitId, totalWeight.chargedWeight))
 
 
   return res.json(
@@ -5866,7 +5853,7 @@ async function markDeliver(req, res) {
       },
       // {model: warehouse, as: 'receivingWarehouse', attributes: ['id']}
     ],
-    attributes: ['receiverName', 'receiverEmail', 'createdAt', 'consolidation', 'trackingId', 'total']
+    attributes: ['receiverName', 'receiverEmail', 'createdAt', 'consolidation', 'trackingId', 'total', 'appUnitId']
   });
 
 
@@ -5883,7 +5870,7 @@ async function markDeliver(req, res) {
   const consolidation = bookingData.consolidation ? 'Yes' : 'No';
   //  const createdAt = String(bookingData.createdAt).substring(4, 15);
 
-  deliveredMail(to, name, bookingData.trackingId, arrived.length, bookingData.logisticCompany.title, consolidation, totalWeight.chargedWeight, bookingData.total, bookingData.dropoffAddress)
+  deliveredMail(to, name, bookingData.trackingId, arrived.length, bookingData.logisticCompany.title, consolidation, await weightTextFor(bookingData.appUnitId, totalWeight.chargedWeight), bookingData.total, bookingData.dropoffAddress)
 
 
   return res.json(returnFunction("1", "Success", {}, ""));
@@ -7216,7 +7203,7 @@ async function packagesNeverReceivedDetails(req, res) {
     include: [
       {
         model: booking,
-        attributes:['trackingId','senderName','senderEmail','senderPhone'],
+        attributes:['trackingId','senderName','senderEmail','senderPhone','appUnitId'],
         include: [{
           model: user,
           as: 'customer',
@@ -7232,6 +7219,12 @@ async function packagesNeverReceivedDetails(req, res) {
     ],
   })
 
+  // sizes and weight in the booking's units, with their symbols
+  if (packages) {
+    const units = await unitsSymbolsAndRates(packages.booking?.appUnitId || (await currentAppUnitsId()));
+    packagesInUnits([packages], units.conversionRate);
+    packages.dataValues.unit = units.symbol;
+  }
   return res.json(returnFunction("1", "Details of Package", packages))
 
 

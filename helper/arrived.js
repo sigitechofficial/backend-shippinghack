@@ -860,7 +860,7 @@ module.exports = function (email,username,orderNumber,packageQty,billableweight,
                                       mso-line-height-alt: 19.2px;
                                     "
                                   >
-                                    <p style="margin: 0">${billableweight} lbs</p>
+                                    <p style="margin: 0">${billableweight}</p>
                                   </div>
                                 </td>
                               </tr>

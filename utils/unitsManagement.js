@@ -5,7 +5,7 @@ const { baseUnits, units, appUnits} = require("../models");
 //^ Return current appunit id
 async function currentAppUnitsId() {
    try {
-    const currentUnits = await appUnits.findOne({where: { status: true }});
+    const currentUnits = await appUnits.findOne({where: { status: true, deleted: false }, order: [["id", "DESC"]]});
     return  currentUnits.id;
    } catch (error) {
     console.log("🚀 ~ file: unitsManagement.js:12 ~ currentAppUnits ~ error:", error);
@@ -60,9 +60,9 @@ async function unitsSymbolsAndRates(appUnitId) {
      return parseFloat(output);
  }
 
-//^ Convert Value to Base Units
+//^ Convert Value to Base Units (4 decimals, so a value typed in kg / cm reads back exactly)
 function  convertToBaseUnits(value , conversionRate ) {
-  const output =  (parseFloat(value) *  parseFloat(conversionRate)).toFixed(2) //current to base
+  const output =  (parseFloat(value) *  parseFloat(conversionRate)).toFixed(4) //current to base
   return parseFloat(output);
 }
 
