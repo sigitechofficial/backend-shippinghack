@@ -30,6 +30,7 @@ jobs:
   verify:
     name: Syntax check
     runs-on: ubuntu-latest
+    timeout-minutes: 5     # hard cap so a stuck run can't burn Actions minutes
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,6 +49,7 @@ jobs:
     name: Deploy via SSM
     needs: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 15    # SSM command itself times out at 10 min
     steps:
       - uses: actions/checkout@v4
 
