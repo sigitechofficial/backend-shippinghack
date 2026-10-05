@@ -20,21 +20,30 @@ DEALLOCATE PREPARE stmt;
 -- Starter prices = FedEx's 2026 list price (Puerto Rico -> Puerto Rico, fuel included,
 -- checked on fedex.com on 2026-10-05) for the band's top weight, plus about $8.
 -- REVIEW THEM in Admin > Logistic companies > FedEx > Rates > Local.
--- The bands are round kg (2, 9, 22, 32, 45 kg and FedEx's 150 lb = 68.04 kg limit), stored in lb.
+-- Round numbers in the weight unit the admin uses now: lb (5, 20, 50, 70, 100, 150) or
+-- kg (2, 9, 22, 32, 45, 68.04 = FedEx's 150 lb limit); always stored in lb.
 UPDATE logisticCompanyCharges
 SET deleted = 1, status = 0
 WHERE @hadSizeId = 0 AND logisticCompanyId = 1 AND bookingType = 'Local' AND deleted = 0;
 
 SET @seedBands := (SELECT COUNT(*) FROM logisticCompanyCharges
                    WHERE logisticCompanyId = 1 AND bookingType = 'Local' AND deleted = 0) = 0;
+SET @inKg := COALESCE((SELECT w.symbol = 'kg' FROM appUnits a JOIN units w ON w.id = a.weightUnitId
+                       WHERE a.status = 1 AND a.deleted = 0 ORDER BY a.id DESC LIMIT 1), 0);
 
 INSERT INTO logisticCompanyCharges (startValue, endValue, ETA, bookingType, charges, status, deleted, flash, createdAt, updatedAt, logisticCompanyId)
-SELECT 0.0000, 4.4092, '1-3', 'Local', 43.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands
-UNION ALL SELECT 4.4092, 19.8414, '1-3', 'Local', 46.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands
-UNION ALL SELECT 19.8414, 48.5012, '1-3', 'Local', 65.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands
-UNION ALL SELECT 48.5012, 70.5472, '1-3', 'Local', 178.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands
-UNION ALL SELECT 70.5472, 99.2070, '1-3', 'Local', 210.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands
-UNION ALL SELECT 99.2070, 150.0000, '1-3', 'Local', 267.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands;
+SELECT 0.0000, 5.0000, '1-3', 'Local', 43.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND NOT @inKg
+UNION ALL SELECT 5.0000, 20.0000, '1-3', 'Local', 46.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND NOT @inKg
+UNION ALL SELECT 20.0000, 50.0000, '1-3', 'Local', 65.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND NOT @inKg
+UNION ALL SELECT 50.0000, 70.0000, '1-3', 'Local', 176.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND NOT @inKg
+UNION ALL SELECT 70.0000, 100.0000, '1-3', 'Local', 210.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND NOT @inKg
+UNION ALL SELECT 100.0000, 150.0000, '1-3', 'Local', 267.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND NOT @inKg
+UNION ALL SELECT 0.0000, 4.4092, '1-3', 'Local', 43.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND @inKg
+UNION ALL SELECT 4.4092, 19.8414, '1-3', 'Local', 46.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND @inKg
+UNION ALL SELECT 19.8414, 48.5012, '1-3', 'Local', 65.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND @inKg
+UNION ALL SELECT 48.5012, 70.5472, '1-3', 'Local', 178.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND @inKg
+UNION ALL SELECT 70.5472, 99.2070, '1-3', 'Local', 210.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND @inKg
+UNION ALL SELECT 99.2070, 150.0000, '1-3', 'Local', 267.0000, 1, 0, 0, NOW(), NOW(), 1 FROM DUAL WHERE @seedBands AND @inKg;
 
 -- 3. A Metric unit system for package sizes (cm / kg), next to the existing Imperial one
 INSERT INTO unitClasses (title, status, createdAt, updatedAt)
@@ -51,15 +60,33 @@ INSERT INTO systemUnits (type, name, symbol, conversionRate, status, unitClassId
 SELECT 'length', 'Centimetres', 'cm', 1, 1, @metric, NOW(), NOW() FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM systemUnits WHERE unitClassId = @metric AND type = 'length');
 
--- 4. Starter box sizes (only when there are no active sizes yet). Upload a picture for
--- each in Admin > Package sizes.
+-- 4. Starter box sizes (only when there are no active sizes yet), in inches when the admin
+-- uses lb/in and in cm when kg/cm. Upload a picture for each in Admin > Package sizes.
+INSERT INTO unitClasses (title, status, createdAt, updatedAt)
+SELECT 'Imperial', 1, NOW(), NOW() FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM unitClasses WHERE title = 'Imperial');
+SET @imperial := (SELECT id FROM unitClasses WHERE title = 'Imperial' ORDER BY id LIMIT 1);
+INSERT INTO systemUnits (type, name, symbol, conversionRate, status, unitClassId, createdAt, updatedAt)
+SELECT 'weight', 'Pounds', 'lbs', 1, 1, @imperial, NOW(), NOW() FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM systemUnits WHERE unitClassId = @imperial AND type = 'weight');
+INSERT INTO systemUnits (type, name, symbol, conversionRate, status, unitClassId, createdAt, updatedAt)
+SELECT 'length', 'Inch', 'in', 1, 1, @imperial, NOW(), NOW() FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM systemUnits WHERE unitClassId = @imperial AND type = 'length');
+
 SET @seedSizes := (SELECT COUNT(*) FROM sizes WHERE status = 1) = 0;
 SET @kg := (SELECT id FROM systemUnits WHERE unitClassId = @metric AND type = 'weight' ORDER BY id LIMIT 1);
 SET @cm := (SELECT id FROM systemUnits WHERE unitClassId = @metric AND type = 'length' ORDER BY id LIMIT 1);
+SET @lbs := (SELECT id FROM systemUnits WHERE unitClassId = @imperial AND type = 'weight' ORDER BY id LIMIT 1);
+SET @in := (SELECT id FROM systemUnits WHERE unitClassId = @imperial AND type = 'length' ORDER BY id LIMIT 1);
 
 INSERT INTO sizes (title, weight, length, width, height, volume, image, status, createdAt, updatedAt, weightUnitId, lengthUnitId)
-SELECT 'Extra small', 0, 20, 15, 10, 3000, '', 1, NOW(), NOW(), @kg, @cm FROM DUAL WHERE @seedSizes
-UNION ALL SELECT 'Small', 0, 30, 30, 30, 27000, '', 1, NOW(), NOW(), @kg, @cm FROM DUAL WHERE @seedSizes
-UNION ALL SELECT 'Medium', 0, 45, 35, 30, 47250, '', 1, NOW(), NOW(), @kg, @cm FROM DUAL WHERE @seedSizes
-UNION ALL SELECT 'Large', 0, 60, 45, 45, 121500, '', 1, NOW(), NOW(), @kg, @cm FROM DUAL WHERE @seedSizes
-UNION ALL SELECT 'Extra large', 0, 60, 60, 60, 216000, '', 1, NOW(), NOW(), @kg, @cm FROM DUAL WHERE @seedSizes;
+SELECT 'Extra small', 0, 8, 6, 4, 192, '', 1, NOW(), NOW(), @lbs, @in FROM DUAL WHERE @seedSizes AND NOT @inKg
+UNION ALL SELECT 'Small', 0, 12, 12, 12, 1728, '', 1, NOW(), NOW(), @lbs, @in FROM DUAL WHERE @seedSizes AND NOT @inKg
+UNION ALL SELECT 'Medium', 0, 18, 14, 12, 3024, '', 1, NOW(), NOW(), @lbs, @in FROM DUAL WHERE @seedSizes AND NOT @inKg
+UNION ALL SELECT 'Large', 0, 24, 18, 18, 7776, '', 1, NOW(), NOW(), @lbs, @in FROM DUAL WHERE @seedSizes AND NOT @inKg
+UNION ALL SELECT 'Extra large', 0, 24, 24, 24, 13824, '', 1, NOW(), NOW(), @lbs, @in FROM DUAL WHERE @seedSizes AND NOT @inKg
+UNION ALL SELECT 'Extra small', 0, 20, 15, 10, 3000, '', 1, NOW(), NOW(), @kg, @cm FROM DUAL WHERE @seedSizes AND @inKg
+UNION ALL SELECT 'Small', 0, 30, 30, 30, 27000, '', 1, NOW(), NOW(), @kg, @cm FROM DUAL WHERE @seedSizes AND @inKg
+UNION ALL SELECT 'Medium', 0, 45, 35, 30, 47250, '', 1, NOW(), NOW(), @kg, @cm FROM DUAL WHERE @seedSizes AND @inKg
+UNION ALL SELECT 'Large', 0, 60, 45, 45, 121500, '', 1, NOW(), NOW(), @kg, @cm FROM DUAL WHERE @seedSizes AND @inKg
+UNION ALL SELECT 'Extra large', 0, 60, 60, 60, 216000, '', 1, NOW(), NOW(), @kg, @cm FROM DUAL WHERE @seedSizes AND @inKg;
