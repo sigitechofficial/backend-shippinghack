@@ -114,8 +114,13 @@ module.exports = (sequelize, DataTypes) =>{
         fedexLabel:{
            type: DataTypes.STRING(1024),
            allowNull:true
+        },
+        // Local orders: the box size the customer chose (Admin > Package sizes)
+        sizeId: {
+            type: DataTypes.INTEGER,
+            allowNull: true
         }
-        
+
         
     });
     // package.associate = (models)=>{

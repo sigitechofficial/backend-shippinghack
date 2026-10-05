@@ -127,12 +127,18 @@ const {
 const {
   calculateWeights,
   chargedWeightOf,
-  localPrice,
   quoteInternational,
   quoteLocal,
   companiesWithRates,
   quoteCompany,
   measuredPackages,
+  LOCAL_COMPANY_ID,
+  localSetup,
+  localQuoteFor,
+  localChoice,
+  localBandShown,
+  localSizeShown,
+  localOptions,
 } = require("../utils/pricing");
 // Defining the account for sending email
 const transporter = nodemailer.createTransport({
@@ -300,6 +306,13 @@ function dateFormatDMY(dateStr) {
 //   }
 
 // }
+
+// A Local box's weight for the FedEx label, in lb (2 decimals, at least 0.1)
+function localLabelWeight(pkg) {
+  const w = Number(pkg.weight);
+  return Number.isFinite(w) && w > 0 ? Math.max(0.1, Math.round(w * 100) / 100) : 1;
+}
+
 async function createFedexShipmentLoc(bookingData) {
 
 
@@ -405,7 +418,7 @@ async function createFedexShipmentLoc(bookingData) {
         packagingType: "YOUR_PACKAGING",
         pickupType: "USE_SCHEDULED_PICKUP",
         totalWeight: bookingData.packages.reduce(
-          (sum, pkg) => sum + parseFloat(pkg.weight || 0),
+          (sum, pkg) => sum + localLabelWeight(pkg),
           0
         ),
         blockInsightVisibility: false,
@@ -476,22 +489,34 @@ async function createFedexShipmentLoc(bookingData) {
             },
             weight: {
               units: "LB",
-              value: parseFloat(pkg.weight) || 1,
+              value: localLabelWeight(pkg),
             },
           })),
         },
-        requestedPackageLineItems: bookingData.packages.map((pkg, index) => ({
+        // one line per box: its weight (lb) and, when the customer chose a box size, its
+        // sides in whole inches rounded up, so FedEx's first bill matches the box
+        requestedPackageLineItems: bookingData.packages.map((pkg) => ({
           customerReferences: [
             {
               customerReferenceType: "CUSTOMER_REFERENCE",
               value: pkg.reference || "Order Number or REFERENCE",
             },
           ],
-          groupPackageCount: index + 1,
+          groupPackageCount: 1,
           weight: {
             units: "LB",
-            value: parseFloat(pkg.weight) || 1,
+            value: localLabelWeight(pkg),
           },
+          ...(pkg.sizeId
+            ? {
+                dimensions: {
+                  length: Math.max(1, Math.ceil(Number(pkg.length) - 1e-6)),
+                  width: Math.max(1, Math.ceil(Number(pkg.width) - 1e-6)),
+                  height: Math.max(1, Math.ceil(Number(pkg.height) - 1e-6)),
+                  units: "IN",
+                },
+              }
+            : {}),
         })),
       },
       accountNumber: {
@@ -2993,12 +3018,13 @@ async function shippingCalculater(req, res) {
 }
 
 /*
-            . Units the customer types and sees, with the package limits in those units
-              (no login: the website calculator uses it)
+            . Units the customer types and sees, with the package limits in those units,
+              and the Local weight bands, box sizes and prices
+              (no login: the website calculator and Local form use it)
 */
 async function unitsInfo(req, res) {
   const u = await currentUnits();
-  return res.json(returnFunction("1", "Units", unitsPayload(u), ""));
+  return res.json(returnFunction("1", "Units", { ...unitsPayload(u), ...(await localOptions(u)) }, ""));
 }
 
 /*
@@ -3022,6 +3048,8 @@ async function idsForBooking(req, res) {
   const { unit, limits } = unitsPayload(u);
   outObj.unit = unit;
   outObj.limits = limits;
+  // Local package screen: weight bands, box sizes and their prices
+  Object.assign(outObj, await localOptions(u));
   return res.json(returnFunction("1", "All related Ids", outObj, ""));
 }
 
@@ -3366,9 +3394,9 @@ async function createOrderLoc(req, res) {
   // if (businessUser.userTypeId === 3) {
   //   await checkBookingLimit(userId);
   // }
-  // weight is typed in the units the admin chose; at least 1, at most 150 lb in total
+  // the box and its price, before anything is saved
   const u = await currentUnits();
-  checkPackages(packages, u, { local: true });
+  const box = await localBox(packages, u);
   let [pickupAddressIdDB, dropoffAddressIdDB] = await Promise.all([
     addressAdder(
       addNewPickup,
@@ -3439,39 +3467,14 @@ async function createOrderLoc(req, res) {
     throw new CustomException(msg, msg);
   }
 
-  // let totalWeight = packages.reduce((sum, val) => {
-  //   return (sum += parseFloat(val.weight));
-  // }, 0);
-  // converting the weight (from app units to base units)
-
-  // typed in the units shown → stored in base units (lb / in / in³)
-  const basePackages = packages.map((p) => {
-    const length = toBase(p.length, u.rate.length);
-    const width = toBase(p.width, u.rate.length);
-    const height = toBase(p.height, u.rate.length);
-    return {
-      weight: toBase(p.weight, u.rate.weight),
-      length,
-      width,
-      height,
-      volume: length * width * height,
-    };
-  });
-  let weight = 0,
-    length = 0,
-    width = 0,
-    volume = 0,
-    height = 0;
-  basePackages.forEach((p) => {
-    weight += p.weight;
-    length += p.length;
-    width += p.width;
-    height += p.height;
-    volume += p.volume;
-  });
-
-  let dimensions = { weight, height, length, volume, width };
-  console.log(dimensions); // For debugging or verification
+  // stored in base units (lb / in / in³): the top of the chosen weight band and the box size
+  const dimensions = {
+    weight: box.weight,
+    length: box.length,
+    width: box.width,
+    height: box.height,
+    volume: box.volume,
+  };
 
   // let convertedTotalWeight = unitConversions(
   //   dimensions.weight,
@@ -3525,8 +3528,8 @@ async function createOrderLoc(req, res) {
   //   //returns a Buffer
   //   fs.writeFileSync(`Public/Barcodes/${trackingId}.png`, buffer);
   // });
-  // flat Local price by total weight (lb)
-  const charge = localPrice(dimensions.weight);
+  // the admin's flat Local price for the charged weight
+  const charge = box.price;
   await booking.update(
     {
       trackingId,
@@ -3553,25 +3556,24 @@ async function createOrderLoc(req, res) {
   // adding packages to table
   // manipulating packages
 
-  // Local packages are not re-measured: what the customer typed is also the measured value
-  let convertedPackages = packages.map((data, i) => {
-    const b = basePackages[i];
-    return {
-      ...data,
-      weight: b.weight,
-      length: b.length,
-      width: b.width,
-      height: b.height,
-      volume: b.volume,
-      actualWeight: b.weight,
-      actualLength: b.length,
-      actualWidth: b.width,
-      actualHeight: b.height,
-      actualVolume: b.volume,
-      status: true,
-      bookingId: bookingData.id,
-    };
-  });
+  // Local packages are not re-measured: the chosen weight and box size are also the
+  // measured values (what FedEx gets on the label)
+  let convertedPackages = packages.map((data) => ({
+    ...data,
+    weight: box.weight,
+    length: box.length,
+    width: box.width,
+    height: box.height,
+    volume: box.volume,
+    actualWeight: box.weight,
+    actualLength: box.length,
+    actualWidth: box.width,
+    actualHeight: box.height,
+    actualVolume: box.volume,
+    sizeId: box.sizeId,
+    status: true,
+    bookingId: bookingData.id,
+  }));
   await package.bulkCreate(convertedPackages);
 
   // TODO Later
@@ -3595,12 +3597,79 @@ async function createOrderLoc(req, res) {
       dropoffAddress: dropoffAddressData,
     },
     packages,
+    // what the price is for: the chosen weight band and box, and the band charged
+    weightBand: box.weightBand,
+    size: box.size,
+    chargedAs: box.chargedAs,
+    chargedBySize: box.bySize,
+    unit: u.symbol,
     pickupDate: `${pickupDate}`,
     pickupStartTime: `${pickupStartTime}`,
     pickupEndTime: `${pickupEndTime}`,
     barCode: `Public/Barcodes/${trackingId}.png`,
   };
   return res.json(returnFunction("1", "Booking created", outObj, ""));
+}
+
+// A Local order's box and price, in base units. The customer picks a weight band and a
+// box size from the admin's lists (packages[0].localBandId, .sizeId); older apps send a
+// typed weight / size instead. Either way the price is the admin's Local band for the
+// charged weight (the larger of the weight and the size weight).
+async function localBox(packages, u) {
+  const fail = (msg) => {
+    throw new CustomException(msg, msg);
+  };
+  if (!Array.isArray(packages) || packages.length !== 1) fail("A Local order is one box. Please add one package.");
+  const p = packages[0] || {};
+  // checked before anything is saved (a missing category would fail after the order row)
+  if (p.categoryId !== undefined && p.categoryId !== null && p.categoryId !== "") {
+    const cat = await category.findOne({ where: { id: p.categoryId, status: true }, attributes: ["id"] });
+    if (!cat) fail("Please choose a category.");
+  }
+  const setup = await localSetup();
+  if (!setup.company || setup.bands.length === 0) fail("Local delivery is not available right now. Please try again later.");
+
+  if (p.localBandId !== undefined && p.localBandId !== null && p.localBandId !== "") {
+    const q = localChoice(setup, p.localBandId, p.sizeId);
+    return {
+      weight: q.weight,
+      length: q.size.length,
+      width: q.size.width,
+      height: q.size.height,
+      volume: q.size.volume,
+      sizeId: q.size.id,
+      price: q.price,
+      chargedAs: localBandShown(q.band, u).label,
+      bySize: q.bySize,
+      weightBand: localBandShown(q.chosenBand, u),
+      size: localSizeShown(q.size, setup, u),
+    };
+  }
+
+  // typed in the units shown → base units
+  checkPackages(packages, u, { local: true });
+  const weight = toBase(p.weight, u.rate.weight);
+  const length = toBase(p.length, u.rate.length);
+  const width = toBase(p.width, u.rate.length);
+  const height = toBase(p.height, u.rate.length);
+  const volume = length * width * height;
+  const q = localQuoteFor(setup, weight, volume);
+  if (!q.band) {
+    fail(q.bySize ? "This box is too big for Local delivery." : "This weight is too heavy for Local delivery.");
+  }
+  return {
+    weight,
+    length,
+    width,
+    height,
+    volume,
+    sizeId: null,
+    price: q.price,
+    chargedAs: localBandShown(q.band, u).label,
+    bySize: q.bySize,
+    weightBand: null,
+    size: null,
+  };
 }
 /*
             6. Cancel booking
@@ -3854,15 +3923,32 @@ async function logisticCompanies(req, res) {
 }
 
 // Prices of every company for a booking, in the booking's units. International orders
-// use the measured packages (one box when consolidated); Local orders the flat price.
+// use the measured packages (one box when consolidated). A Local order keeps the price
+// it was created with (the admin's band at that time).
 async function quoteBooking(bookingData) {
   const u = await unitsFor(bookingData.appUnitId);
+  if (bookingData.bookingTypeId === 6) {
+    const company = await logisticCompany.findByPk(LOCAL_COMPANY_ID, { attributes: ["id", "title", "logo"] });
+    const price = Number(bookingData.total) || 0;
+    const arryofCompanies = price > 0
+      ? [{
+          id: company?.id ?? LOCAL_COMPANY_ID,
+          name: company?.title ?? "FedEx",
+          logo: company?.logo ?? "",
+          Actualweight: String(fromBase(bookingData.weight, u.rate.weight)),
+          dimensionalWeight: "0",
+          chargedWeight: String(fromBase(bookingData.weight, u.rate.weight)),
+          rate: "",
+          charges: price.toFixed(2),
+          ETA: null,
+          flash: false,
+          flatPrice: true,
+        }]
+      : [];
+    return { arryofCompanies, u };
+  }
   const packages = measuredPackages(bookingData);
-  const arryofCompanies =
-    bookingData.bookingTypeId === 6
-      ? await quoteLocal(packages, u)
-      : await quoteInternational(packages, u);
-  return { arryofCompanies, u };
+  return { arryofCompanies: await quoteInternational(packages, u), u };
 }
 
 /*
@@ -5313,6 +5399,14 @@ async function cardPaymentBooking(bookingId, userId) {
   });
 }
 
+// Every payment charges the order's saved total (set when the order is priced). The
+// message to show when it has no price yet, or null.
+function noPriceYet(bookingData) {
+  return Number(bookingData.total) > 0
+    ? null
+    : "This order has no price yet. Please choose a delivery company first.";
+}
+
 async function respondToCardPayment(res, bookingData, intent) {
   if (intent.status !== "succeeded") {
     return res.json(
@@ -5334,7 +5428,7 @@ async function respondToCardPayment(res, bookingData, intent) {
 
 async function makepaymentBySavedCard(req, res) {
   const UserId = req.user.id;
-  let { pmId, amount, bookingId } = req.body;
+  let { pmId, bookingId } = req.body;
 
   const userData = await user.findOne({ where: { id: UserId } });
   await ensureStripeCustomerId(userData);
@@ -5366,11 +5460,14 @@ async function makepaymentBySavedCard(req, res) {
       returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
     );
   }
+  const unpriced = noPriceYet(bookingData);
+  if (unpriced) return res.json(returnFunction("0", unpriced, {}, unpriced));
 
   let intent;
   try {
     intent = await stripe.paymentIntents.create({
-      amount: convertToCents(amount), // send in cents
+      // the order's own total, not an amount sent by the app
+      amount: convertToCents(bookingData.total), // send in cents
       currency: "usd",
       payment_method_types: ["card"],
       customer: `${userData.stripeCustomerId}`,
@@ -5393,7 +5490,6 @@ async function makepaymentbynewcard(req, res) {
     cardNumber,
     cardCVC,
     saveStatus,
-    amount,
     bookingId,
   } = req.body;
 
@@ -5409,6 +5505,8 @@ async function makepaymentbynewcard(req, res) {
       returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
     );
   }
+  const unpriced = noPriceYet(bookingData);
+  if (unpriced) return res.json(returnFunction("0", unpriced, {}, unpriced));
 
   let intent;
   try {
@@ -5428,7 +5526,8 @@ async function makepaymentbynewcard(req, res) {
       });
     }
     intent = await stripe.paymentIntents.create({
-      amount: convertToCents(amount),
+      // the order's own total, not an amount sent by the app
+      amount: convertToCents(bookingData.total),
       currency: "usd",
       payment_method_types: ["card"],
       customer: `${userData.stripeCustomerId}`,
@@ -6581,29 +6680,6 @@ function getNextPostalCode(previousCode) {
   return letter + number.toString().padStart(3, "0");
 }
 
-async function payment(req, res) {
-  const { cardHolderName, cardNo, expiryDate, cvv, bookingId, amount } =
-    req.body;
-  const found = await booking.findOne({ where: { id: bookingId } });
-  if (!found) throw new CustomException("Booking not found", "");
-  await booking.update(
-    { paymentConfirmed: true, bookingStatusId: 10 },
-    { where: { id: bookingId } }
-  );
-
-  let dt = Date.now();
-  let DT = new Date(dt);
-  let currentDate = `${DT.getMonth() + 1}-${DT.getDate()}-${DT.getFullYear()}`;
-  let currentTime = `${DT.getHours()}:${DT.getMinutes()}:${DT.getSeconds()}`;
-  bookingHistory.create({
-    date: currentDate,
-    time: currentTime,
-    bookingId,
-    bookingStatusId: 10,
-  });
-
-  return res.json(returnFunction("1", "Payment Confirmed", found.id, ""));
-}
 
 //Fetch Shopify Orders
 async function downloadLabel(req, res) {
@@ -6981,13 +7057,25 @@ function convertToDollars(cents) {
 
 //===========checkout Sessions=================//
 async function checkoutSessionsCheck(req, res) {
-  const { amount, bookingType, bookingId,successUrl,cancelUrl} = req.body;
-  console.log("req.body in ==============================>", req.body);
+  const { bookingType, bookingId, successUrl, cancelUrl } = req.body;
   const UserId = req.user.id;
+
+  // the order's own total, not an amount sent by the website
+  const bookingData = await cardPaymentBooking(bookingId, UserId);
+  if (!bookingData) {
+    return res.json(returnFunction("0", "Order not found", {}, "Order not found"));
+  }
+  if (bookingData.paymentConfirmed) {
+    return res.json(
+      returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
+    );
+  }
+  const unpriced = noPriceYet(bookingData);
+  if (unpriced) return res.json(returnFunction("0", unpriced, {}, unpriced));
 
   const userData = await user.findOne({ where: { id: UserId } });
   await ensureStripeCustomerId(userData);
-  let ammount = convertToCents(amount);
+  let ammount = convertToCents(bookingData.total);
 
   const session = await stripeFunction.checkoutSessions(
     ammount,
@@ -7172,12 +7260,15 @@ async function finalizePaidBooking(bookingID, amount) {
     if (shippingCost !== null) bookingData.shippingCost = shippingCost;
     await bookingData.save();
 
+    // each box gets its own piece's tracking number and label (the first when FedEx
+    // returns fewer pieces than boxes)
+    const pieces = fedexShipment.data.output.transactionShipments[0].pieceResponses || [];
     for (let i = 0; i < bookingData.packages.length; i++) {
-      const pkg = bookingData.packages[i];
-      await pkg.update({
-        logisticCompanyTrackingNum: trackingNumber,
-        fedexLabel: label
-      })
+      const piece = pieces[i] || pieces[0];
+      await bookingData.packages[i].update({
+        logisticCompanyTrackingNum: piece?.trackingNumber || trackingNumber,
+        fedexLabel: piece?.packageDocuments?.[0]?.url || label,
+      });
     }
     return normalizeLabels(label);
   }
@@ -7730,7 +7821,6 @@ module.exports = {
   // TrackingId
   downloadLabel,
   bookingDetailsByTracking,
-  payment,
   //downloadLabelDEMO
   checkoutSessionsCheck,
   registerUserMobile,

@@ -146,6 +146,8 @@ function checkPackages(packages, u, { local = false } = {}) {
 
 module.exports = {
   MAX_PACKAGE_WEIGHT_LB,
+  MAX_SIDE_IN,
+  MAX_LENGTH_PLUS_GIRTH_IN,
   num,
   round,
   currentUnits,

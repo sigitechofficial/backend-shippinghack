@@ -120,8 +120,9 @@ const {
   packagesInUnits,
   num,
   round,
+  MAX_PACKAGE_WEIGHT_LB,
 } = require("../utils/units");
-const { calculateWeights, chargedWeightOf } = require("../utils/pricing");
+const { calculateWeights, chargedWeightOf, LOCAL_COMPANY_ID } = require("../utils/pricing");
 const { round2, driverBalance, driverBalances } = require("../utils/ledger");
 const { title } = require("process");
 // Defining the account for sending email
@@ -1645,6 +1646,13 @@ async function getUnitsClass(req, res) {
 */
 async function addSize(req, res) {
   const { title, weight, length, width, height, unitClassId } = req.body;
+  // box sizes are offered for Local orders, so they need real sides
+  if (![length, width, height].every((v) => Number(v) > 0)) {
+    throw new CustomException(
+      "Enter the length, width and height (more than 0).",
+      "Enter the length, width and height (more than 0)."
+    );
+  }
   const sizeExist = await size.findOne({ where: { title, status: true } });
   if (sizeExist)
     throw new CustomException(
@@ -1686,8 +1694,8 @@ async function addSize(req, res) {
             3. get all sizes
 */
 async function getAllSize(req, res) {
+  // all sizes, on and off: active ones are the box sizes customers choose for Local orders
   const sizeData = await size.findAll({
-    where: { status: true },
     include: [
       {
         model: unit,
@@ -1697,7 +1705,8 @@ async function getAllSize(req, res) {
       },
       { model: unit, as: "lengthUnitS", attributes: ["symbol"] },
     ],
-    attributes: ["id", "title", "weight", "length", "width", "height", "image"],
+    attributes: ["id", "title", "weight", "length", "width", "height", "image", "status"],
+    order: [["id", "ASC"]],
   });
   return res.json(returnFunction("1", "All size", sizeData, ""));
 }
@@ -1715,6 +1724,13 @@ async function updateSize(req, res) {
     sizeId,
     updateImage,
   } = req.body;
+  // box sizes are offered for Local orders, so they need real sides
+  if (![length, width, height].every((v) => Number(v) > 0)) {
+    throw new CustomException(
+      "Enter the length, width and height (more than 0).",
+      "Enter the length, width and height (more than 0)."
+    );
+  }
   const sizeExist = await size.findOne({
     where: { title, status: true, id: { [Op.not]: sizeId } },
   });
@@ -5434,12 +5450,18 @@ async function changeLogCompanyStatus(req, res) {
 
 /*
             5–9. Rate bands of a logistic company
-    A band prices charged weights above its From and up to its To, at a price per unit of
-    charged weight, for International or Local orders. Stored per lb; typed and shown in
-    the weight unit the admin chose. A company's active bands of one type must not
-    overlap and must not leave gaps between them.
+    A band prices charged weights above its From and up to its To, for International or
+    Local orders. International: a price per unit of charged weight (stored per lb).
+    Local: a flat price for any order in the band, and bands go up to 150 lb (FedEx's
+    parcel limit). From/To are stored in lb and typed and shown in the weight unit the
+    admin chose. A company's active bands of one type must not overlap and must not leave
+    gaps between them, and a heavier Local band can't cost less than a lighter one.
 */
 const BAND_TYPES = ["International", "Local"];
+const isLocalBand = (bookingType) => String(bookingType || "").toLowerCase() === "local";
+// the price as the admin types and sees it: per unit shown (International) or flat (Local)
+const bandPriceShown = (bookingType, charges, u) =>
+  isLocalBand(bookingType) ? round(num(charges), 2) : round(num(charges) * u.rate.weight, 4);
 
 const bandFail = (message) => {
   throw new CustomException(message, message);
@@ -5453,8 +5475,9 @@ function bandOut(b, u) {
     bookingType: b.bookingType,
     startValue: fromBase(b.startValue, u.rate.weight),
     endValue: fromBase(b.endValue, u.rate.weight),
-    // price per unit shown (per kg = per lb × lb in a kg)
-    charges: round(num(b.charges) * u.rate.weight, 4),
+    // International: price per unit shown (per kg = per lb × lb in a kg); Local: flat price
+    charges: bandPriceShown(b.bookingType, b.charges, u),
+    flatPrice: isLocalBand(b.bookingType),
     ETA: b.ETA || "",
     status: !!b.status,
     flash: !!b.flash,
@@ -5489,6 +5512,16 @@ function bandGaps(rows, u) {
         });
       }
     }
+    // Local bands should reach FedEx's 150 lb limit, or heavier boxes can't be sent
+    const lastEnd = num(list[list.length - 1].endValue);
+    if (isLocalBand(first.bookingType) && lastEnd < MAX_PACKAGE_WEIGHT_LB - tol) {
+      gaps.push({
+        logisticCompanyId: first.logisticCompanyId,
+        bookingType: first.bookingType,
+        from: fromBase(lastEnd, u.rate.weight),
+        to: fromBase(MAX_PACKAGE_WEIGHT_LB, u.rate.weight),
+      });
+    }
   }
   return gaps;
 }
@@ -5499,15 +5532,26 @@ function bandInput(body, u) {
   const to = Number(body.endValue);
   const price = Number(body.charges);
   const w = u.symbol.weight;
-  if (body.startValue === "" || !Number.isFinite(from) || from < 0) bandFail(`From must be 0 ${w} or more.`);
-  if (body.endValue === "" || !Number.isFinite(to) || to <= from) bandFail("To must be more than From.");
-  if (!Number.isFinite(price) || price <= 0) bandFail(`Price per ${w} must be more than 0.`);
   const bookingType = BAND_TYPES.find((t) => t.toLowerCase() === String(body.bookingType || "").toLowerCase());
   if (!bookingType) bandFail("Choose International or Local.");
+  const local = isLocalBand(bookingType);
+  if (body.startValue === "" || !Number.isFinite(from) || from < 0) bandFail(`From must be 0 ${w} or more.`);
+  if (body.endValue === "" || !Number.isFinite(to) || to <= from) bandFail("To must be more than From.");
+  if (!Number.isFinite(price) || price <= 0) bandFail(local ? "Price must be more than 0." : `Price per ${w} must be more than 0.`);
+  let endValue = toBase(to, u.rate.weight);
+  if (local) {
+    // up to FedEx's parcel limit; a To typed as the limit shown (e.g. 68.04 kg) is the limit
+    const max = MAX_PACKAGE_WEIGHT_LB;
+    if (endValue > max + 0.01 * u.rate.weight) {
+      bandFail(`Local bands can go up to ${fromBase(max, u.rate.weight)} ${w} (FedEx's limit for one box).`);
+    }
+    endValue = Math.min(endValue, max);
+  }
   return {
     startValue: toBase(from, u.rate.weight),
-    endValue: toBase(to, u.rate.weight),
-    charges: round(price / u.rate.weight, 4),
+    endValue,
+    // International: per lb; Local: the flat price as typed
+    charges: local ? round(price, 2) : round(price / u.rate.weight, 4),
     bookingType,
     ETA: String(body.ETA || "").trim() || null,
   };
@@ -5525,7 +5569,7 @@ async function checkBands(companyId, bookingType, u, { changed = null, removedId
   const show = (v) => `${fromBase(v, u.rate.weight)} ${u.symbol.weight}`;
   const others = rows
     .filter((b) => b.id !== changed?.id && b.id !== removedId)
-    .map((b) => ({ id: b.id, start: num(b.startValue), end: num(b.endValue) }));
+    .map((b) => ({ id: b.id, start: num(b.startValue), end: num(b.endValue), price: num(b.charges) }));
 
   if (removedId) {
     const before = rows
@@ -5562,6 +5606,25 @@ async function checkBands(companyId, bookingType, u, { changed = null, removedId
     }
     band.end = next.start;
   }
+  // Local: a heavier band can't cost less than a lighter one (flat prices)
+  if (isLocalBand(bookingType) && changed.charges !== undefined) {
+    const price = num(changed.charges);
+    const money = (v) => `${u.symbol.currency}${round(v, 2)}`;
+    const dearerLighter = others.filter((o) => o.end <= band.start + tol && o.price > price + 0.001).sort((a, b) => b.price - a.price)[0];
+    if (dearerLighter) {
+      bandFail(
+        `The lighter ${show(dearerLighter.start)} – ${show(dearerLighter.end)} band costs ${money(dearerLighter.price)}. ` +
+          `A heavier band can't cost less: set at least ${money(dearerLighter.price)}.`
+      );
+    }
+    const cheaperHeavier = others.filter((o) => o.start >= band.end - tol && o.price < price - 0.001).sort((a, b) => a.price - b.price)[0];
+    if (cheaperHeavier) {
+      bandFail(
+        `The heavier ${show(cheaperHeavier.start)} – ${show(cheaperHeavier.end)} band costs ${money(cheaperHeavier.price)}. ` +
+          `A lighter band can't cost more: set at most ${money(cheaperHeavier.price)}.`
+      );
+    }
+  }
   return { startValue: band.start, endValue: band.end };
 }
 
@@ -5586,6 +5649,9 @@ async function getChargesForLog(req, res) {
         charges: rows.map((b) => bandOut(b, u)),
         gaps: bandGaps(rows, u),
         unit: { weight: u.symbol.weight, currency: u.symbol.currency },
+        // Local orders are shipped and priced by this company only
+        localCompanyId: LOCAL_COMPANY_ID,
+        localMaxWeight: fromBase(MAX_PACKAGE_WEIGHT_LB, u.rate.weight),
       },
       ""
     )
@@ -5601,7 +5667,12 @@ async function updateChargesForLog(req, res) {
   const same = (typed, shown) => Math.abs(Number(typed) - shown) < 0.005;
   if (same(req.body.startValue, fromBase(band.startValue, u.rate.weight))) data.startValue = num(band.startValue);
   if (same(req.body.endValue, fromBase(band.endValue, u.rate.weight))) data.endValue = num(band.endValue);
-  if (same(req.body.charges, round(num(band.charges) * u.rate.weight, 4))) data.charges = num(band.charges);
+  if (
+    isLocalBand(data.bookingType) === isLocalBand(band.bookingType) &&
+    same(req.body.charges, bandPriceShown(band.bookingType, band.charges, u))
+  ) {
+    data.charges = num(band.charges);
+  }
   if (band.status) {
     if (data.bookingType.toLowerCase() !== String(band.bookingType).toLowerCase()) {
       // moving it to the other type removes it from this type's bands
@@ -5610,7 +5681,7 @@ async function updateChargesForLog(req, res) {
     Object.assign(
       data,
       await checkBands(band.logisticCompanyId, data.bookingType, u, {
-        changed: { id: band.id, startValue: data.startValue, endValue: data.endValue },
+        changed: { id: band.id, startValue: data.startValue, endValue: data.endValue, charges: data.charges },
       })
     );
   }
@@ -5626,7 +5697,7 @@ async function addChargesForLog(req, res) {
   Object.assign(
     data,
     await checkBands(company.id, data.bookingType, u, {
-      changed: { startValue: data.startValue, endValue: data.endValue },
+      changed: { startValue: data.startValue, endValue: data.endValue, charges: data.charges },
     })
   );
   const newCharges = await logisticCompanyCharges.create({
@@ -5647,7 +5718,7 @@ async function updateStatusChargesForLog(req, res) {
   if (!band) bandFail("Rate not found.");
   if (status && !band.status) {
     await checkBands(band.logisticCompanyId, band.bookingType, u, {
-      changed: { id: band.id, startValue: num(band.startValue), endValue: num(band.endValue) },
+      changed: { id: band.id, startValue: num(band.startValue), endValue: num(band.endValue), charges: num(band.charges) },
     });
   } else if (!status && band.status) {
     await checkBands(band.logisticCompanyId, band.bookingType, u, { removedId: band.id });

@@ -5041,7 +5041,7 @@ router.post('/shopifyOrderDetails', asyncMiddleware(userController.shopifyOrderD
  */
 router.post('/shopifyOrder', asyncMiddleware(userController. shopifyOrder));
 // ! Module  : Payment___________________
-router.post('/payment', asyncMiddleware(userController.payment));
+// (POST /payment removed: it marked any order paid without a login or a payment)
 // ! Module : Cards__________________
 router.post('/addCard',validateToken, asyncMiddleware(userController.addCard));
 // Get All Cards
