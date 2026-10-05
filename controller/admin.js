@@ -5340,9 +5340,19 @@ async function getLogCompanies(req, res) {
   });
   // the size-weight divisor is stored as in³ per lb and shown in the chosen units
   const u = await currentUnits();
+  // which orders each company prices: International when it has an active International
+  // rate; Local only for the Local company (its active Local rates are the Local prices)
+  const activeRates = await logisticCompanyCharges.findAll({
+    where: { status: true, deleted: false },
+    attributes: ["logisticCompanyId", "bookingType"],
+  });
+  const hasRate = (id, type) =>
+    activeRates.some((r) => r.logisticCompanyId === id && String(r.bookingType).toLowerCase() === type);
   for (const c of LogCompanies) {
     c.dataValues.divisor = divisorFromBase(c.divisor, u);
     c.dataValues.divisorUnit = divisorUnit(u);
+    c.dataValues.international = hasRate(c.id, "international");
+    c.dataValues.local = c.id === LOCAL_COMPANY_ID && hasRate(c.id, "local");
   }
   return res.json(returnFunction("1", "Logistic companies", LogCompanies, ""));
 }
