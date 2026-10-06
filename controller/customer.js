@@ -113,7 +113,7 @@ const PDFDocument = require("pdfkit");
 var CryptoJS = require("crypto-js");
 
 const { getDateAndTime } = require("../utils/helperFuncCompany");
-const { recordAdminEarning } = require("../utils/ledger");
+const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
 const {
   currentUnits,
@@ -3460,6 +3460,18 @@ async function createOrderLoc(req, res) {
     dropoffAddressData.lat,
     dropoffAddressData.lng
   );
+  // Local delivery is within Puerto Rico only (the FedEx label is made for Puerto Rico):
+  // both ZIP codes must be Puerto Rico ZIPs, 00601–00988
+  const inPuertoRico = (a) => {
+    const zip = String(a?.postalCode || "").trim().slice(0, 5);
+    const n = parseInt(zip, 10);
+    return /^\d{5}$/.test(zip) && n >= 601 && n <= 988;
+  };
+  if (!inPuertoRico(pickupAddressData) || !inPuertoRico(dropoffAddressData)) {
+    const msg = "Local delivery is only within Puerto Rico. Please choose a Puerto Rico address.";
+    throw new CustomException(msg, msg);
+  }
+
   // two saved addresses with the same pin (or the same address twice) can't be shipped
   const hasPin = (a) => a && a.lat !== null && a.lat !== "" && a.lng !== null && a.lng !== "";
   if (
@@ -3782,8 +3794,9 @@ async function cancelBooking(req, res) {
   if (!bookingData) {
     return res.json(returnFunction("0", "", {}, "Order not found"));
   }
-  // Paid orders can't be cancelled (refunds are handled separately).
-  if (bookingData.paymentConfirmed) {
+  // Paid orders can't be cancelled (refunds are handled separately), including one
+  // paid on Stripe whose confirmation never arrived.
+  if (bookingData.paymentConfirmed || (await recoverPaidBooking(bookingData.id))) {
     return res.json(
       returnFunction("0", "", {}, "This order has been paid and can no longer be cancelled.")
     );
@@ -5543,7 +5556,8 @@ async function makepaymentBySavedCard(req, res) {
   if (!bookingData) {
     return res.json(returnFunction("0", "Order not found", {}, "Order not found"));
   }
-  if (bookingData.paymentConfirmed) {
+  // already paid (paid on Stripe but the confirmation never arrived) → no second charge
+  if (bookingData.paymentConfirmed || (await recoverPaidBooking(bookingData.id))) {
     return res.json(
       returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
     );
@@ -5588,7 +5602,8 @@ async function makepaymentbynewcard(req, res) {
   if (!bookingData) {
     return res.json(returnFunction("0", "Order not found", {}, "Order not found"));
   }
-  if (bookingData.paymentConfirmed) {
+  // already paid (paid on Stripe but the confirmation never arrived) → no second charge
+  if (bookingData.paymentConfirmed || (await recoverPaidBooking(bookingData.id))) {
     return res.json(
       returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
     );
@@ -7153,7 +7168,8 @@ async function checkoutSessionsCheck(req, res) {
   if (!bookingData) {
     return res.json(returnFunction("0", "Order not found", {}, "Order not found"));
   }
-  if (bookingData.paymentConfirmed) {
+  // already paid (paid on Stripe but the confirmation never arrived) → no second charge
+  if (bookingData.paymentConfirmed || (await recoverPaidBooking(bookingData.id))) {
     return res.json(
       returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
     );
@@ -7254,7 +7270,18 @@ async function keepLabel(fedexUrl, trackingNumber) {
 // an existing label is returned as-is and payment rows are only written once.
 // The payment is recorded before the FedEx call, so if FedEx fails the booking is
 // still paid and "Ready to Ship" and a later call only retries the shipment.
+// One run per order at a time: the webhook, the payment-success page, the app and
+// the admin's retry can all ask at once, and must not create two FedEx shipments.
+const finalizingBookings = new Map();
 async function finalizePaidBooking(bookingID, amount) {
+  const key = String(bookingID);
+  if (finalizingBookings.has(key)) return finalizingBookings.get(key);
+  const run = finalizePaidBookingOnce(bookingID, amount).finally(() => finalizingBookings.delete(key));
+  finalizingBookings.set(key, run);
+  return run;
+}
+
+async function finalizePaidBookingOnce(bookingID, amount) {
   const bookingData = await booking.findOne({
     where: { id: bookingID },
     include: [
@@ -7450,6 +7477,13 @@ async function stripeWebhook(req, res) {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     try {
+      // the Stripe payment, kept for refunds
+      if (session.payment_intent) {
+        await booking.update(
+          { captureId: String(session.payment_intent) },
+          { where: { id: session.metadata.bookingId } }
+        );
+      }
       await finalizePaidBooking(
         session.metadata.bookingId,
         convertToDollars(session.metadata.real_amount)
@@ -7490,6 +7524,10 @@ async function confirmCheckout(req, res) {
   }
   if (session.payment_status !== "paid") {
     return res.json(returnFunction("0", "", {}, "Payment is still pending"));
+  }
+  // the Stripe payment, kept for refunds
+  if (session.payment_intent) {
+    await booking.update({ captureId: String(session.payment_intent) }, { where: { id: bookingId } });
   }
 
   const labels = await finalizePaidBooking(
@@ -7704,7 +7742,8 @@ async function createPaymentIntent(req, res) {
   if (!bookingData) {
     return res.json(returnFunction("0", "", {}, "Order not found"));
   }
-  if (bookingData.paymentConfirmed) {
+  // already paid (paid on Stripe but the confirmation never arrived) → no second charge
+  if (bookingData.paymentConfirmed || (await recoverPaidBooking(bookingData.id))) {
     return res.json(
       returnFunction("0", "", {}, "This order has already been paid.")
     );
@@ -7794,6 +7833,167 @@ async function finalizeAppPayment(bookingId, intent, bookingTotal) {
     console.error(`booking ${bookingId} paid but FedEx shipment failed: ${err.message}`);
     return [];
   }
+}
+
+// A succeeded Stripe payment for this order: app / card payments, and website
+// Checkout payments made since their payment carries the order id. null if none.
+async function findSucceededPayment(bookingId) {
+  const id = Number(bookingId);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const found = await stripe.paymentIntents.search({
+    query: `metadata['bookingId']:'${id}' AND status:'succeeded'`,
+    limit: 10,
+  });
+  return (found.data || []).sort((a, b) => b.created - a.created)[0] || null;
+}
+
+// When the customer paid but the confirmation never reached us (website tab or app
+// closed before it), the order is still unpaid. Ask Stripe and, if it was paid,
+// record it like any payment (ledger rows, Ready to Ship, label). Returns true when
+// the order is paid.
+async function recoverPaidBooking(bookingId) {
+  const bookingData = await booking.findByPk(bookingId, { attributes: ["id", "total", "paymentConfirmed"] });
+  if (!bookingData) return false;
+  if (bookingData.paymentConfirmed) return true;
+  let intent;
+  try {
+    intent = await findSucceededPayment(bookingData.id);
+  } catch (err) {
+    console.error(`recoverPaidBooking ${bookingData.id}: Stripe search failed: ${err.message}`);
+    return false;
+  }
+  if (!intent) return false;
+  console.warn(`booking ${bookingData.id} was paid on Stripe (${intent.id}) but not recorded; recording it now`);
+  await finalizeAppPayment(bookingData.id, intent, bookingData.total);
+  return true;
+}
+
+// Every few minutes: unpaid orders touched in the last 3 days that Stripe says are
+// paid are recorded (the customer closed the tab / app before the confirmation).
+async function recoverRecentPayments() {
+  const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  const unpaid = await booking.findAll({
+    where: { paymentConfirmed: false, total: { [Op.gt]: 0 }, updatedAt: { [Op.gte]: since } },
+    attributes: ["id"],
+    order: [["id", "DESC"]],
+    limit: 100,
+  });
+  for (const b of unpaid) {
+    try {
+      await recoverPaidBooking(b.id);
+    } catch (err) {
+      console.error(`recoverRecentPayments ${b.id}: ${err.message}`);
+    }
+  }
+}
+
+// Admin: make the FedEx label again for a paid order that has none (FedEx failed
+// after the payment). The order's own total is used, nothing is charged.
+async function retryOrderLabel(bookingId) {
+  const b = await booking.findByPk(bookingId, {
+    attributes: ["id", "paymentConfirmed", "label", "total", "bookingTypeId", "bookingStatusId"],
+  });
+  if (!b) return { ok: false, message: "Order not found." };
+  if (!b.paymentConfirmed) return { ok: false, message: "This order is not paid yet." };
+  const existing = normalizeLabels(b.label);
+  if (existing.length) return { ok: true, message: "This order already has a label.", labels: existing };
+  if (![1, 6].includes(Number(b.bookingTypeId))) {
+    return { ok: false, message: "Labels are made for International and Local orders only." };
+  }
+  if (Number(b.bookingStatusId) !== 10) {
+    return { ok: false, message: "Only orders that are Ready to Ship can get a new label." };
+  }
+  try {
+    const labels = await finalizePaidBooking(b.id, Number(b.total));
+    return labels.length
+      ? { ok: true, message: "Label created.", labels }
+      : { ok: false, message: "FedEx returned no label. Please try again." };
+  } catch (err) {
+    return { ok: false, message: `FedEx: ${err.message || err.body}` };
+  }
+}
+
+// Admin: cancel a paid order that hasn't left yet (Ready to Ship) and refund it in
+// full. The Stripe payment is found first; then each FedEx shipment is voided (FedEx
+// refusing stops everything, nothing is refunded); then the refund; then the order is
+// Cancelled with a "Refund" ledger row, and its Admin Earning set to match.
+async function cancelPaidOrder(bookingId, reason) {
+  const b = await booking.findByPk(bookingId, {
+    include: [{ model: package, attributes: ["id", "logisticCompanyTrackingNum"] }],
+    attributes: ["id", "paymentConfirmed", "bookingStatusId", "bookingTypeId", "customerId", "captureId", "total"],
+  });
+  if (!b) return { ok: false, message: "Order not found." };
+  if (!b.paymentConfirmed) return { ok: false, message: "This order is not paid. The customer can cancel it." };
+  if (Number(b.bookingStatusId) !== 10) {
+    return { ok: false, message: "Only paid orders that are Ready to Ship (not shipped yet) can be cancelled and refunded." };
+  }
+
+  // 1. the Stripe payment
+  let intentId = String(b.captureId || "");
+  if (!intentId.startsWith("pi_")) {
+    const found = await findSucceededPayment(b.id).catch(() => null);
+    intentId = found ? found.id : "";
+  }
+  if (!intentId) {
+    return {
+      ok: false,
+      message: "The Stripe payment for this order wasn't found. Refund it in the Stripe dashboard first.",
+    };
+  }
+  const intent = await stripe.paymentIntents.retrieve(intentId);
+  const refunded = await stripe.refunds.list({ payment_intent: intentId, limit: 100 });
+  const alreadyRefunded = (refunded.data || [])
+    .filter((r) => r.status !== "failed" && r.status !== "canceled")
+    .reduce((sum, r) => sum + r.amount, 0);
+  const toRefund = Number(intent.amount_received || 0) - alreadyRefunded;
+  if (!(toRefund > 0)) return { ok: false, message: "This payment has already been refunded in Stripe." };
+
+  // 2. void the FedEx shipment(s)
+  const trackingNumbers = [
+    ...new Set(
+      (b.packages || [])
+        .map((p) => String(p.logisticCompanyTrackingNum || "").replace(/"/g, "").trim())
+        .filter(Boolean)
+    ),
+  ];
+  const voided = [];
+  for (const t of trackingNumbers) {
+    try {
+      await fedex.cancelFedexShipment(t);
+      voided.push(t);
+    } catch (err) {
+      const done = voided.length ? ` (already voided: ${voided.join(", ")})` : "";
+      return { ok: false, message: `FedEx did not cancel shipment ${t}: ${err.message}${done}. Nothing was refunded.` };
+    }
+  }
+
+  // 3. the refund
+  const refund = await stripe.refunds.create({
+    payment_intent: intentId,
+    amount: toRefund,
+    reason: "requested_by_customer",
+    metadata: { bookingId: String(b.id) },
+  });
+  const refundAmount = Number(convertToDollars(refund.amount));
+
+  // 4. the order and the ledger
+  const time = getDateAndTime();
+  await booking.update({ bookingStatusId: 19 }, { where: { id: b.id } });
+  await bookingHistory.create({ date: time.currentDate, time: time.currentTime, bookingId: b.id, bookingStatusId: 19 });
+  await cancelledBooking.create({
+    bookingId: b.id,
+    userId: b.customerId,
+    reasonId: null,
+    reasontext: String(reason || "").trim() || "Cancelled and refunded by admin",
+  });
+  await wallet.create({ amount: -refundAmount, bookingId: b.id, userId: b.customerId, description: "Refund" });
+  const adminEarning = await wallet.findOne({ where: { bookingId: b.id, description: "Admin Earning" } });
+  if (adminEarning) {
+    const others = await wallet.sum("amount", { where: { bookingId: b.id, description: { [Op.ne]: "Admin Earning" } } });
+    await adminEarning.update({ amount: round2(-(others || 0)) });
+  }
+  const shipments = voided.length ? ` FedEx shipment${voided.length > 1 ? "s" : ""} ${voided.join(", ")} voided.` : "";
+  return { ok: true, message: `Order cancelled and $${refundAmount.toFixed(2)} refunded.${shipments}` };
 }
 
 //==================================Track Fedex Order===========================================================//
@@ -7886,6 +8086,11 @@ module.exports = {
   shippingCalculater,
   unitsInfo,
   markLocalDelivered,
+  finalizePaidBooking,
+  recoverPaidBooking,
+  retryOrderLabel,
+  cancelPaidOrder,
+  recoverRecentPayments,
   idsForBooking,
   logisticCompanies,
   searchAddress,

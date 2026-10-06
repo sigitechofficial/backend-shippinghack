@@ -568,6 +568,11 @@ async function checkoutSessions(amount, userId, bookingType,bookingId,successUrl
         bookingId:bookingId,
         real_amount: amount,
       },
+      // the payment itself also carries the order id, so a payment whose success page
+      // never loaded can still be found and recorded (recoverPaidBooking)
+      payment_intent_data: {
+        metadata: { bookingId: String(bookingId) },
+      },
     });
 
     console.log("🚀 ~ checkoutSessions ~ session:", session);

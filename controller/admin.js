@@ -97,6 +97,8 @@ const {
   textSearchAddress,
   getNextPostalCode,
   markLocalDelivered,
+  retryOrderLabel,
+  cancelPaidOrder,
 } = require("../controller/customer");
 const e = require("express");
 const Braintree = require("./braintree");
@@ -2241,6 +2243,20 @@ async function localOrderDelivered(req, res) {
   return res.json(returnFunction("1", result.message, {}, ""));
 }
 
+// A paid order whose FedEx label failed: make it again
+async function retryLabel(req, res) {
+  const result = await retryOrderLabel(req.body.bookingId);
+  if (!result.ok) throw new CustomException(result.message, result.message);
+  return res.json(returnFunction("1", result.message, { labels: result.labels || [] }, ""));
+}
+
+// A paid order that hasn't left yet: void FedEx, refund in full, cancel
+async function cancelPaidOrderAdmin(req, res) {
+  const result = await cancelPaidOrder(req.body.bookingId, req.body.reason);
+  if (!result.ok) throw new CustomException(result.message, result.message);
+  return res.json(returnFunction("1", result.message, {}, ""));
+}
+
 /*
  *        4. Unit settings: the weight, size and distance units everyone types and sees.
  *           The database keeps lb / in / km; a new setting applies to new entries,
@@ -3716,8 +3732,24 @@ async function getAllbookings(req, res) {
       "bookingTypeId",
       "paymentConfirmed",
       "createdAt",
+      "label",
     ],
   });
+  // a FedEx label exists (the column is JSON: a URL, or [{ label }], sometimes as text)
+  const hasLabel = (value) => {
+    let v = value;
+    if (typeof v === "string") {
+      try {
+        v = JSON.parse(v);
+      } catch (e) {
+        /* a plain URL */
+      }
+    }
+    if (!v) return false;
+    if (typeof v === "string") return v.trim().length > 0;
+    if (Array.isArray(v)) return v.some((entry) => entry && entry.label);
+    return false;
+  };
 
   let output = [];
   let outobj = {};
@@ -3736,6 +3768,7 @@ async function getAllbookings(req, res) {
         bookingType: obj.bookingType ? obj.bookingType.title : null,
         paymentConfirmed: !!obj.paymentConfirmed,
         createdAt: obj.createdAt,
+        hasLabel: hasLabel(obj.label),
       },
       // bookingStatus: obj.bookingStatus.title,
       // pickupAddress:{
@@ -7263,6 +7296,8 @@ module.exports = {
   getUnitSettings,
   updateUnitSettings,
   localOrderDelivered,
+  retryLabel,
+  cancelPaidOrderAdmin,
   // Support
   getSupport,
   updateSupport,

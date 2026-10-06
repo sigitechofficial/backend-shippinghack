@@ -120,7 +120,59 @@ async function validatePostalCode(addressData) {
 
 
 
+// ─── Ship API helpers (same account and keys the labels are made with) ──────────────
+const FEDEX_ACCOUNT = "510087640";
+
+// A FedEx error as one line ("CODE: message"), from an axios error or an Error
+function fedexErrorText(error) {
+  const e = error?.response?.data?.errors?.[0];
+  return e ? `${e.code}: ${e.message}` : (error?.message || "FedEx request failed");
+}
+
+async function shipToken() {
+  const token = await axios.post(
+    `${FEDEX_API_BASE}/oauth/token`,
+    new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: process.env.client_id,
+      client_secret: process.env.client_secret,
+    }).toString(),
+    { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+  );
+  return token.data.access_token;
+}
+
+function jsonHeaders(token) {
+  return { authorization: `Bearer ${token}`, "Content-Type": "application/json", "X-locale": "en_US" };
+}
+
+// Cancels (voids) a shipment that hasn't been picked up yet. Throws with FedEx's
+// message when FedEx refuses.
+async function cancelFedexShipment(trackingNumber) {
+  try {
+    const token = await shipToken();
+    const res = await axios.put(
+      `${FEDEX_API_BASE}/ship/v1/shipments/cancel`,
+      { accountNumber: { value: FEDEX_ACCOUNT }, trackingNumber: String(trackingNumber) },
+      { headers: jsonHeaders(token) }
+    );
+    const out = res.data?.output || {};
+    if (out.cancelledShipment === false) {
+      throw new Error(out.message || out.successMessage || "FedEx did not cancel the shipment");
+    }
+    return out;
+  } catch (error) {
+    throw new Error(fedexErrorText(error));
+  }
+}
+
 module.exports={
     trackFedExPackage,
-    validatePostalCode
+    validatePostalCode,
+    FEDEX_API_BASE,
+    FEDEX_ACCOUNT,
+    fedexErrorText,
+    shipToken,
+    jsonHeaders,
+    cancelFedexShipment,
 }

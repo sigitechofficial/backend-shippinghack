@@ -261,6 +261,16 @@ if (syncDb) {
   });
 }
 
+// Every 5 minutes: orders paid on Stripe whose confirmation never reached us (the
+// customer closed the website tab or the app first) are recorded as paid.
+if (process.env.DISABLE_PAYMENT_RECOVERY !== 'true') {
+  require('node-cron').schedule('*/5 * * * *', () => {
+    require('./controller/customer')
+      .recoverRecentPayments()
+      .catch((err) => console.error('Payment recovery job failed:', err && err.message));
+  });
+}
+
 // Graceful shutdown
 function gracefulShutdown(signal) {
   console.log(`${signal} received. Shutting down gracefully...`);

@@ -4263,6 +4263,10 @@ router.get('/unitsettings', validateToken, checkPermission, asyncMiddleware(admi
 router.put('/unitsettings', validateToken, checkPermission, asyncMiddleware(adminController.updateUnitSettings));
 // mark a paid, Ready to Ship Local order delivered (FedEx delivers Local orders)
 router.put('/localorderdelivered', validateToken, checkPermission, asyncMiddleware(adminController.localOrderDelivered));
+// A paid order without a FedEx label: make the label again
+router.put('/retrylabel', validateToken, checkPermission, asyncMiddleware(adminController.retryLabel));
+// A paid order that hasn't left yet: void FedEx, refund in full and cancel
+router.put('/cancelpaidorder', validateToken, checkPermission, asyncMiddleware(adminController.cancelPaidOrderAdmin));
 //4. Get unit types addUnit
 /**
  * @swagger
