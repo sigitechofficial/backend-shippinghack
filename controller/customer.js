@@ -113,6 +113,7 @@ const PDFDocument = require("pdfkit");
 var CryptoJS = require("crypto-js");
 
 const { getDateAndTime } = require("../utils/helperFuncCompany");
+const { localPickupSettings, pickupDays, checkPickupChoice, prNow } = require("../utils/localPickup");
 const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
 const {
@@ -334,7 +335,12 @@ async function createFedexShipmentLoc(bookingData) {
     const month = String(currentDate.getMonth() + 1).padStart(2, "0");
     const date = String(currentDate.getDate()).padStart(2, "0");
 
-    const formattedDate = `${year}-${month}-${date}`;
+    let formattedDate = `${year}-${month}-${date}`;
+    // FedEx pickup: the label is for the pickup day (FedEx comes then); drop-off: today
+    const pickupDay = String(bookingData.pickupDate || "").slice(0, 10);
+    if (bookingData.pickupMethod === "pickup" && /^\d{4}-\d{2}-\d{2}$/.test(pickupDay) && pickupDay > formattedDate) {
+      formattedDate = pickupDay;
+    }
 
     const token = await axios.post(
       "https://apis-sandbox.fedex.com/oauth/token",
@@ -419,7 +425,9 @@ async function createFedexShipmentLoc(bookingData) {
         shipDatestamp: formattedDate,
         serviceType: "INTERNATIONAL_PRIORITY",
         packagingType: "YOUR_PACKAGING",
-        pickupType: "USE_SCHEDULED_PICKUP",
+        // drop-off orders: the customer takes the box to FedEx (orders made before the
+        // switch existed have no method and keep the scheduled pickup they always had)
+        pickupType: bookingData.pickupMethod === "dropoff" ? "DROPOFF_AT_FEDEX_LOCATION" : "USE_SCHEDULED_PICKUP",
         totalWeight: bookingData.packages.reduce(
           (sum, pkg) => sum + localLabelWeight(pkg),
           0
@@ -3400,6 +3408,9 @@ async function createOrderLoc(req, res) {
   // the box and its price, before anything is saved
   const u = await currentUnits();
   const box = await localBox(packages, u);
+  // drop-off at FedEx or FedEx pickup: the admin's setting when the order is made
+  const pickupSettings = await localPickupSettings();
+  const isPickup = pickupSettings.method === "pickup";
   let [pickupAddressIdDB, dropoffAddressIdDB] = await Promise.all([
     addressAdder(
       addNewPickup,
@@ -3482,6 +3493,13 @@ async function createOrderLoc(req, res) {
     throw new CustomException(msg, msg);
   }
 
+  // FedEx pickup: the day and window must be ones FedEx offers at this address. A
+  // drop-off order has no pickup day or time (older apps still send one; it's ignored).
+  const pickupChoice = isPickup
+    ? await checkPickupChoice(pickupAddressData, pickupDate, pickupStartTime, pickupEndTime)
+    : { pickupDate: null, pickupStartTime: null, pickupEndTime: null };
+  const pickupFee = isPickup ? pickupSettings.fee : 0;
+
   // stored in base units (lb / in / in³): the top of the chosen weight band and the box size
   const dimensions = {
     weight: box.weight,
@@ -3497,9 +3515,11 @@ async function createOrderLoc(req, res) {
   // );
   const bookingData = await booking.create({
     // receiver is the person creating the order
-    pickupDate,
-    pickupStartTime,
-    pickupEndTime,
+    pickupDate: pickupChoice.pickupDate,
+    pickupStartTime: pickupChoice.pickupStartTime,
+    pickupEndTime: pickupChoice.pickupEndTime,
+    pickupMethod: pickupSettings.method,
+    pickupFee: isPickup ? pickupFee : null,
     receiverName,
     receiverEmail,
     receiverPhone,
@@ -3543,13 +3563,14 @@ async function createOrderLoc(req, res) {
   //   //returns a Buffer
   //   fs.writeFileSync(`Public/Barcodes/${trackingId}.png`, buffer);
   // });
-  // the admin's flat Local price for the charged weight
+  // the admin's flat Local price for the charged weight, plus the pickup fee
   const charge = box.price;
+  const orderTotal = round2(Number(charge) + Number(pickupFee));
   await booking.update(
     {
       trackingId,
-      subTotal: charge,
-      total: charge,
+      subTotal: orderTotal,
+      total: orderTotal,
       barcode: `Public/Barcodes/${trackingId}.png`,
     },
     { where: { id: bookingData.id } }
@@ -3598,7 +3619,11 @@ async function createOrderLoc(req, res) {
   let outObj = {
     bookingId: bookingData.id,
     trackingId,
-    total: charge,
+    total: orderTotal,
+    // the price is deliveryPrice (the band) + pickupFee (FedEx pickup only)
+    deliveryPrice: charge,
+    pickupFee,
+    pickupMethod: pickupSettings.method,
     senderData: {
       senderName: bookingData.senderName,
       senderEmail: bookingData.senderEmail,
@@ -3618,9 +3643,10 @@ async function createOrderLoc(req, res) {
     chargedAs: box.chargedAs,
     chargedBySize: box.bySize,
     unit: u.symbol,
-    pickupDate: `${pickupDate}`,
-    pickupStartTime: `${pickupStartTime}`,
-    pickupEndTime: `${pickupEndTime}`,
+    // null for drop-off
+    pickupDate: pickupChoice.pickupDate,
+    pickupStartTime: pickupChoice.pickupStartTime,
+    pickupEndTime: pickupChoice.pickupEndTime,
     barCode: `Public/Barcodes/${trackingId}.png`,
   };
   return res.json(returnFunction("1", "Booking created", outObj, ""));
@@ -4891,6 +4917,13 @@ async function orderDetails(req, res) {
       "deliveryTypeId",
       "logisticCompanyTrackingNum",
       "bookingTypeId",
+      // Local orders: 'dropoff' (to FedEx) or 'pickup' (FedEx comes on the day/window)
+      "pickupMethod",
+      "pickupFee",
+      "pickupDate",
+      "pickupStartTime",
+      "pickupEndTime",
+      "pickupConfirmation",
     ],
   });
   // Charged weight and the booking-level measurements, in the booking's units
@@ -7411,6 +7444,9 @@ async function finalizePaidBookingOnce(bookingID, amount) {
         fedexLabel: !pieceUrl || pieceUrl === fedexLabel ? label : await keepLabel(pieceUrl, piece.trackingNumber),
       });
     }
+    // FedEx pickup orders: book FedEx to come (a refusal is kept on the order for the
+    // admin, and never fails the payment)
+    if (bookingData.pickupMethod === "pickup") await bookOrderPickup(bookingData.id);
     return normalizeLabels(label);
   }
 
@@ -7889,6 +7925,143 @@ async function recoverRecentPayments() {
 
 // Admin: make the FedEx label again for a paid order that has none (FedEx failed
 // after the payment). The order's own total is used, nothing is charged.
+// Books FedEx to collect a paid FedEx-pickup Local order at its pickup address, on the
+// order's day and window (or the ones the admin gives when retrying). The confirmation
+// number and FedEx location are saved on the order; a refusal is saved as pickupError
+// ("CODE: message") and returned, never thrown. One booking per order at a time.
+const bookingPickups = new Map();
+async function bookOrderPickup(bookingId, newTime) {
+  const key = String(bookingId);
+  if (bookingPickups.has(key)) return bookingPickups.get(key);
+  const run = bookOrderPickupOnce(bookingId, newTime).finally(() => bookingPickups.delete(key));
+  bookingPickups.set(key, run);
+  return run;
+}
+
+async function bookOrderPickupOnce(bookingId, newTime) {
+  const b = await booking.findByPk(bookingId, {
+    include: [
+      { model: addressDBS, as: "pickupAddress", attributes: ["streetAddress", "building", "floor", "apartment", "city", "postalCode"] },
+      { model: package, attributes: ["id", "weight"] },
+    ],
+    attributes: [
+      "id", "trackingId", "bookingTypeId", "bookingStatusId", "paymentConfirmed", "pickupMethod",
+      "pickupDate", "pickupStartTime", "pickupEndTime", "pickupConfirmation", "senderName", "senderPhone",
+    ],
+  });
+  if (!b) return { ok: false, message: "Order not found." };
+  if (Number(b.bookingTypeId) !== 6 || b.pickupMethod !== "pickup") {
+    return { ok: false, message: "This order is not a FedEx pickup order." };
+  }
+  if (b.pickupConfirmation) return { ok: true, message: `FedEx pickup already booked (confirmation ${b.pickupConfirmation}).` };
+  if (!b.paymentConfirmed || Number(b.bookingStatusId) !== 10) {
+    return { ok: false, message: "Only paid orders that are Ready to Ship can get a FedEx pickup." };
+  }
+  if (!b.pickupAddress) return { ok: false, message: "This order has no pickup address." };
+
+  let date = String(b.pickupDate || "").slice(0, 10);
+  let readyTime = String(b.pickupStartTime || "");
+  let closeTime = String(b.pickupEndTime || "");
+  if (newTime) {
+    try {
+      const chosen = await checkPickupChoice(b.pickupAddress, newTime.pickupDate, newTime.pickupStartTime, newTime.pickupEndTime);
+      date = chosen.pickupDate;
+      readyTime = chosen.pickupStartTime;
+      closeTime = chosen.pickupEndTime;
+    } catch (err) {
+      return { ok: false, message: err.message || err.body || "Please choose another pickup time." };
+    }
+  }
+  const today = prNow().date;
+  if (!date || date < today) {
+    const message = "The pickup day has passed. Choose a new day and time and book the pickup again.";
+    await booking.update({ pickupError: message }, { where: { id: b.id } });
+    return { ok: false, message };
+  }
+  try {
+    const done = await fedex.createPickup({
+      address: b.pickupAddress,
+      contact: {
+        companyName: "The Shipping Hack",
+        personName: String(b.senderName || "Sender").toUpperCase().slice(0, 70),
+        phoneNumber: String(b.senderPhone || "").replace(/\D/g, "").slice(-10),
+      },
+      date,
+      readyTime,
+      closeTime,
+      sameDay: date === today,
+      weightLb: (b.packages || []).reduce((sum, pkg) => sum + localLabelWeight(pkg), 0),
+      packageCount: (b.packages || []).length || 1,
+      remarks: b.trackingId,
+    });
+    await booking.update(
+      {
+        pickupConfirmation: done.code,
+        pickupLocation: done.location,
+        pickupError: null,
+        ...(newTime ? { pickupDate: date, pickupStartTime: readyTime, pickupEndTime: closeTime } : {}),
+      },
+      { where: { id: b.id } }
+    );
+    return { ok: true, message: `FedEx pickup booked for ${date} (confirmation ${done.code}).` };
+  } catch (err) {
+    const message = String(err.message || "FedEx did not book the pickup").slice(0, 500);
+    console.error(`FedEx pickup for order ${b.id} not booked: ${message}`);
+    await booking.update({ pickupError: message }, { where: { id: b.id } });
+    return { ok: false, message: `FedEx: ${message}` };
+  }
+}
+
+// FedEx only books a pickup shortly before the day (PICKUPDATE.TOO.FAR otherwise), so
+// paid pickup orders it turned away for that reason are booked again later by a job.
+async function bookWaitingPickups() {
+  const waiting = await booking.findAll({
+    where: {
+      bookingTypeId: 6,
+      pickupMethod: "pickup",
+      paymentConfirmed: true,
+      bookingStatusId: 10,
+      pickupConfirmation: null,
+      pickupDate: { [Op.gte]: prNow().date },
+      pickupError: { [Op.like]: "PICKUPDATE.TOO.FAR%" },
+    },
+    attributes: ["id"],
+    limit: 50,
+  });
+  for (const w of waiting) {
+    await bookOrderPickup(w.id).catch((err) => console.error(`Waiting pickup ${w.id}:`, err.message));
+  }
+}
+
+// Customer (Local order, FedEx pickup): the days and windows FedEx offers at the pickup
+// address. Body: { pickupAddressId } (saved) or { pickupAddress: { streetAddress, city,
+// postalCode } } (new).
+async function localPickupOptions(req, res) {
+  const settings = await localPickupSettings();
+  if (settings.method !== "pickup") {
+    return res.json(returnFunction("1", "Local pickup", { ...settings, days: [] }, ""));
+  }
+  const { pickupAddressId, pickupAddress } = req.body || {};
+  let address = null;
+  if (pickupAddressId) {
+    address = await addressDBS.findByPk(pickupAddressId, {
+      attributes: ["streetAddress", "building", "floor", "apartment", "city", "postalCode"],
+    });
+  } else if (pickupAddress && pickupAddress.postalCode) {
+    address = pickupAddress;
+  }
+  if (!address) throw new CustomException("Please choose the pickup address.", "Please choose the pickup address.");
+  let days;
+  try {
+    days = await pickupDays(address);
+  } catch (err) {
+    console.error("FedEx pickup availability failed:", err.message);
+    const msg = "We couldn't get FedEx pickup times right now. Please try again in a moment.";
+    throw new CustomException(msg, msg);
+  }
+  return res.json(returnFunction("1", "Local pickup", { ...settings, days }, ""));
+}
+
 async function retryOrderLabel(bookingId) {
   const b = await booking.findByPk(bookingId, {
     attributes: ["id", "paymentConfirmed", "label", "total", "bookingTypeId", "bookingStatusId"],
@@ -7920,7 +8093,10 @@ async function retryOrderLabel(bookingId) {
 async function cancelPaidOrder(bookingId, reason) {
   const b = await booking.findByPk(bookingId, {
     include: [{ model: package, attributes: ["id", "logisticCompanyTrackingNum"] }],
-    attributes: ["id", "paymentConfirmed", "bookingStatusId", "bookingTypeId", "customerId", "captureId", "total"],
+    attributes: [
+      "id", "paymentConfirmed", "bookingStatusId", "bookingTypeId", "customerId", "captureId", "total",
+      "pickupConfirmation", "pickupDate", "pickupLocation",
+    ],
   });
   if (!b) return { ok: false, message: "Order not found." };
   if (!b.paymentConfirmed) return { ok: false, message: "This order is not paid. The customer can cancel it." };
@@ -7967,6 +8143,23 @@ async function cancelPaidOrder(bookingId, reason) {
     }
   }
 
+  // 2b. cancel the FedEx pickup. If FedEx refuses, the refund still goes ahead and the
+  // admin is told to cancel the pickup on fedex.com.
+  let pickupNote = "";
+  if (b.pickupConfirmation) {
+    try {
+      await fedex.cancelPickup({
+        code: b.pickupConfirmation,
+        date: String(b.pickupDate || "").slice(0, 10),
+        location: b.pickupLocation,
+        remarks: "Order cancelled",
+      });
+      pickupNote = ` FedEx pickup ${b.pickupConfirmation} cancelled.`;
+    } catch (err) {
+      pickupNote = ` FedEx pickup ${b.pickupConfirmation} could not be cancelled here (${err.message}). Please cancel it on fedex.com.`;
+    }
+  }
+
   // 3. the refund
   const refund = await stripe.refunds.create({
     payment_intent: intentId,
@@ -7993,7 +8186,7 @@ async function cancelPaidOrder(bookingId, reason) {
     await adminEarning.update({ amount: round2(-(others || 0)) });
   }
   const shipments = voided.length ? ` FedEx shipment${voided.length > 1 ? "s" : ""} ${voided.join(", ")} voided.` : "";
-  return { ok: true, message: `Order cancelled and $${refundAmount.toFixed(2)} refunded.${shipments}` };
+  return { ok: true, message: `Order cancelled and $${refundAmount.toFixed(2)} refunded.${shipments}${pickupNote}` };
 }
 
 //==================================Track Fedex Order===========================================================//
@@ -8090,6 +8283,9 @@ module.exports = {
   recoverPaidBooking,
   retryOrderLabel,
   cancelPaidOrder,
+  bookOrderPickup,
+  bookWaitingPickups,
+  localPickupOptions,
   recoverRecentPayments,
   idsForBooking,
   logisticCompanies,

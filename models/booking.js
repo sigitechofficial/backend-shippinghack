@@ -201,6 +201,29 @@ module.exports = (sequelize, DataTypes) =>{
         pickupAddressType:{
             type:DataTypes.ENUM('warehouse','merchantAddress'),
             allowNull:true,
+        },
+        // Local orders: how the box reaches FedEx ('dropoff' = the customer takes it to
+        // FedEx, 'pickup' = FedEx collects it), the pickup fee inside total, and the
+        // FedEx pickup booking (confirmation number + FedEx location, or why it failed)
+        pickupMethod:{
+            type:DataTypes.STRING(10),
+            allowNull:true,
+        },
+        pickupFee:{
+            type:DataTypes.DECIMAL(10,2),
+            allowNull:true,
+        },
+        pickupConfirmation:{
+            type:DataTypes.STRING(50),
+            allowNull:true,
+        },
+        pickupLocation:{
+            type:DataTypes.STRING(20),
+            allowNull:true,
+        },
+        pickupError:{
+            type:DataTypes.STRING(500),
+            allowNull:true,
         }
 
     });

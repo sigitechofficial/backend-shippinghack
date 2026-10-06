@@ -166,8 +166,112 @@ async function cancelFedexShipment(trackingNumber) {
   }
 }
 
+// ─── Pickup Request API (FedEx Express collects the box at the sender's address) ─────
+// Times are local to the pickup address ("HH:MM:SS"); dates "YYYY-MM-DD".
+function pickupAddressOf(a) {
+  const lines = [a.streetAddress, [a.building, a.floor, a.apartment].filter(Boolean).join(" ")]
+    .map((l) => String(l || "").trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  return {
+    streetLines: lines.length ? lines : [String(a.city || "")],
+    city: String(a.city || ""),
+    stateOrProvinceCode: "PR",
+    postalCode: String(a.postalCode || "").trim(),
+    countryCode: "US",
+  };
+}
+
+// The days FedEx can pick up at this address, from dispatchDate on (FedEx returns the
+// next few business days): [{ date, available, cutOffTime, accessHours, readyTimes,
+// latestTimes, sameDay }]
+async function pickupAvailability(address, dispatchDate) {
+  try {
+    const token = await shipToken();
+    const res = await axios.post(
+      `${FEDEX_API_BASE}/pickup/v1/pickups/availabilities`,
+      {
+        pickupAddress: pickupAddressOf(address),
+        pickupRequestType: ["SAME_DAY", "FUTURE_DAY"],
+        dispatchDate,
+        carriers: ["FDXE"],
+        countryRelationship: "DOMESTIC",
+      },
+      { headers: jsonHeaders(token) }
+    );
+    return (res.data?.output?.options || []).map((o) => ({
+      date: o.pickupDate,
+      available: !!o.available,
+      sameDay: o.scheduleDay === "SAME_DAY",
+      cutOffTime: o.cutOffTime || null,
+      accessHours: Number(o.accessTime?.hours || 0) + Number(o.accessTime?.minutes || 0) / 60,
+      readyTimes: o.readyTimeOptions || [],
+      latestTimes: o.latestTimeOptions || [],
+    }));
+  } catch (error) {
+    throw new Error(fedexErrorText(error));
+  }
+}
+
+// Books the pickup. Returns { code, location } (FedEx's confirmation number and the
+// FedEx location that will come); throws "CODE: message" when FedEx refuses.
+async function createPickup({ address, contact, date, readyTime, closeTime, sameDay, weightLb, packageCount, remarks }) {
+  try {
+    const token = await shipToken();
+    const res = await axios.post(
+      `${FEDEX_API_BASE}/pickup/v1/pickups`,
+      {
+        associatedAccountNumber: { value: FEDEX_ACCOUNT },
+        originDetail: {
+          pickupAddressType: "OTHER",
+          pickupLocation: { contact, address: pickupAddressOf(address) },
+          readyDateTimestamp: `${date}T${readyTime}Z`,
+          customerCloseTime: closeTime,
+          pickupDateType: sameDay ? "SAME_DAY" : "FUTURE_DAY",
+        },
+        carrierCode: "FDXE",
+        totalWeight: { units: "LB", value: Math.max(1, Math.round(Number(weightLb) * 10) / 10) },
+        packageCount: Math.max(1, Number(packageCount) || 1),
+        countryRelationships: "DOMESTIC",
+        ...(remarks ? { remarks: String(remarks).slice(0, 60) } : {}),
+      },
+      { headers: jsonHeaders(token) }
+    );
+    const out = res.data?.output || {};
+    if (!out.pickupConfirmationCode) throw new Error("FedEx returned no pickup confirmation");
+    return { code: String(out.pickupConfirmationCode), location: out.location ? String(out.location) : null };
+  } catch (error) {
+    throw new Error(fedexErrorText(error));
+  }
+}
+
+// Cancels a booked pickup; throws "CODE: message" when FedEx refuses.
+async function cancelPickup({ code, date, location, remarks }) {
+  try {
+    const token = await shipToken();
+    const res = await axios.put(
+      `${FEDEX_API_BASE}/pickup/v1/pickups/cancel`,
+      {
+        associatedAccountNumber: { value: FEDEX_ACCOUNT },
+        pickupConfirmationCode: String(code),
+        scheduledDate: date,
+        ...(location ? { location } : {}),
+        carrierCode: "FDXE",
+        ...(remarks ? { remarks: String(remarks).slice(0, 60) } : {}),
+      },
+      { headers: jsonHeaders(token) }
+    );
+    return res.data?.output || {};
+  } catch (error) {
+    throw new Error(fedexErrorText(error));
+  }
+}
+
 module.exports={
     trackFedExPackage,
+    pickupAvailability,
+    createPickup,
+    cancelPickup,
     validatePostalCode,
     FEDEX_API_BASE,
     FEDEX_ACCOUNT,

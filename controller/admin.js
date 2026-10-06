@@ -90,6 +90,12 @@ const adminNotification=require('../helper/adminNotifications')
 //const stripe = require('stripe')(process.env.STRIPE_KEY);
 const bcrypt = require("bcryptjs");
 const { Op } = require("sequelize");
+const {
+  localPickupSettings,
+  saveLocalPickupSettings,
+  MODE_KEY: LOCAL_PICKUP_MODE_KEY,
+  FEE_KEY: LOCAL_PICKUP_FEE_KEY,
+} = require("../utils/localPickup");
 // Calling mailer
 const nodemailer = require("nodemailer");
 const sequelize = require("sequelize");
@@ -98,6 +104,7 @@ const {
   getNextPostalCode,
   markLocalDelivered,
   retryOrderLabel,
+  bookOrderPickup,
   cancelPaidOrder,
 } = require("../controller/customer");
 const e = require("express");
@@ -2250,6 +2257,27 @@ async function retryLabel(req, res) {
   return res.json(returnFunction("1", result.message, { labels: result.labels || [] }, ""));
 }
 
+// A paid FedEx-pickup Local order without a booked pickup: book it again, on the
+// order's day and window, or a new one { pickupDate, pickupStartTime, pickupEndTime }
+async function bookPickupAdmin(req, res) {
+  const { bookingId, pickupDate, pickupStartTime, pickupEndTime } = req.body;
+  const newTime = pickupDate ? { pickupDate, pickupStartTime, pickupEndTime } : null;
+  const result = await bookOrderPickup(bookingId, newTime);
+  if (!result.ok) throw new CustomException(result.message, result.message);
+  return res.json(returnFunction("1", result.message, {}, ""));
+}
+
+// Local orders: drop-off at FedEx or FedEx pickup (+ fee), for orders made from now on
+async function getLocalPickup(req, res) {
+  return res.json(returnFunction("1", "Local pickup", await localPickupSettings(), ""));
+}
+
+async function updateLocalPickup(req, res) {
+  const saved = await saveLocalPickupSettings({ method: req.body.method, fee: req.body.fee });
+  const msg = saved.method === "pickup" ? "New Local orders: FedEx picks up" : "New Local orders: drop-off at FedEx";
+  return res.json(returnFunction("1", msg, saved, ""));
+}
+
 // A paid order that hasn't left yet: void FedEx, refund in full, cancel
 async function cancelPaidOrderAdmin(req, res) {
   const result = await cancelPaidOrder(req.body.bookingId, req.body.reason);
@@ -2449,6 +2477,8 @@ async function deleteFAQ(req, res) {
  */
 async function getGenCharges(req, res) {
   const charges = await generalCharges.findAll({
+    // the Local pickup settings have their own card (admin/localpickup)
+    where: { key: { [Op.notIn]: [LOCAL_PICKUP_MODE_KEY, LOCAL_PICKUP_FEE_KEY] } },
     attributes: ["key", "id", "information", "value"],
   });
 
@@ -3733,6 +3763,13 @@ async function getAllbookings(req, res) {
       "paymentConfirmed",
       "createdAt",
       "label",
+      "pickupMethod",
+      "pickupFee",
+      "pickupDate",
+      "pickupStartTime",
+      "pickupEndTime",
+      "pickupConfirmation",
+      "pickupError",
     ],
   });
   // a FedEx label exists (the column is JSON: a URL, or [{ label }], sometimes as text)
@@ -3769,6 +3806,18 @@ async function getAllbookings(req, res) {
         paymentConfirmed: !!obj.paymentConfirmed,
         createdAt: obj.createdAt,
         hasLabel: hasLabel(obj.label),
+        // Local orders: drop-off at FedEx or FedEx pickup (and its booking)
+        pickup: obj.pickupMethod
+          ? {
+              method: obj.pickupMethod,
+              fee: obj.pickupFee,
+              date: obj.pickupDate,
+              startTime: obj.pickupStartTime,
+              endTime: obj.pickupEndTime,
+              confirmation: obj.pickupConfirmation,
+              error: obj.pickupError,
+            }
+          : null,
       },
       // bookingStatus: obj.bookingStatus.title,
       // pickupAddress:{
@@ -7298,6 +7347,9 @@ module.exports = {
   localOrderDelivered,
   retryLabel,
   cancelPaidOrderAdmin,
+  bookPickupAdmin,
+  getLocalPickup,
+  updateLocalPickup,
   // Support
   getSupport,
   updateSupport,

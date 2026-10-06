@@ -269,6 +269,12 @@ if (process.env.DISABLE_PAYMENT_RECOVERY !== 'true') {
       .recoverRecentPayments()
       .catch((err) => console.error('Payment recovery job failed:', err && err.message));
   });
+  // FedEx-pickup Local orders FedEx said were booked too early are booked again
+  require('node-cron').schedule('17 * * * *', () => {
+    require('./controller/customer')
+      .bookWaitingPickups()
+      .catch((err) => console.error('Waiting pickups job failed:', err && err.message));
+  });
 }
 
 // Graceful shutdown

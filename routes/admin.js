@@ -4267,6 +4267,11 @@ router.put('/localorderdelivered', validateToken, checkPermission, asyncMiddlewa
 router.put('/retrylabel', validateToken, checkPermission, asyncMiddleware(adminController.retryLabel));
 // A paid order that hasn't left yet: void FedEx, refund in full and cancel
 router.put('/cancelpaidorder', validateToken, checkPermission, asyncMiddleware(adminController.cancelPaidOrderAdmin));
+// A paid FedEx-pickup Local order whose pickup isn't booked: book it (optionally a new day/time)
+router.put('/bookpickup', validateToken, checkPermission, asyncMiddleware(adminController.bookPickupAdmin));
+// Local orders: drop-off at FedEx or FedEx pickup, and the pickup fee
+router.get('/localpickup', validateToken, checkPermission, asyncMiddleware(adminController.getLocalPickup));
+router.put('/localpickup', validateToken, checkPermission, asyncMiddleware(adminController.updateLocalPickup));
 //4. Get unit types addUnit
 /**
  * @swagger

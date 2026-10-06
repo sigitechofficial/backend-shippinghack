@@ -1398,6 +1398,8 @@ router.post('/shippingCalculater', asyncMiddleware(userController.shippingCalcul
 router.get('/units', asyncMiddleware(userController.unitsInfo))
 // Local package screen: price of a weight band with a box size typed by the customer (no login)
 router.post('/localquote', asyncMiddleware(userController.localQuote))
+// Local order, FedEx pickup: the days and times FedEx offers at the pickup address
+router.post('/localpickupoptions', validateToken, asyncMiddleware(userController.localPickupOptions))
 // 2. Get all required IDs 
 router.get('/idsforbooking', validateToken, asyncMiddleware(userController.idsForBooking))
 // 3. get Charges

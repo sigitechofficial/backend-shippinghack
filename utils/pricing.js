@@ -8,6 +8,7 @@
 const { logisticCompany, logisticCompanyCharges, size, unit } = require("../models");
 const CustomException = require("../middleware/errorObject");
 const { num, round, fromBase, MAX_PACKAGE_WEIGHT_LB, MAX_SIDE_IN, MAX_LENGTH_PLUS_GIRTH_IN } = require("./units");
+const { localPickupSettings } = require("./localPickup");
 
 // Each package is charged on the larger of its weight and its size weight
 // (volume ÷ divisor); the order's charged weight is the sum over its packages.
@@ -257,6 +258,8 @@ async function localOptions(u) {
     localSizes: setup.sizes.map((s) => localSizeShown(s, setup, u)),
     localQuotes,
     localMaxWeight: fromBase(MAX_PACKAGE_WEIGHT_LB, u.rate.weight),
+    // how the box reaches FedEx: 'dropoff' (no pickup day/time) or 'pickup' (+ fee $)
+    localPickup: await localPickupSettings(),
   };
 }
 
