@@ -160,6 +160,7 @@ var yappy = new Yappy.Client({
   domainUrl: "https://www.pps507.com",
 });
 const axios = require("axios");
+const storage = require("../utils/storage");
 var randomstring = require("randomstring");
 const {
   registerUserEmail,
@@ -7138,6 +7139,29 @@ function fedexShippingCost(responses) {
   return found ? Math.round(total * 100) / 100 : null;
 }
 
+// FedEx's label link (packageDocuments[].url) only works for about a day, and a browser
+// that has an expired fedex.com login sends that cookie and gets "session expired"
+// instead of the PDF. So the PDF is saved on our storage right after the label is made
+// and our own link (API_URL/Public/Labels/…, served by the /Public route) is kept on
+// the order. If anything goes wrong the FedEx link is kept, so a payment never fails
+// because of this.
+async function keepLabel(fedexUrl, trackingNumber) {
+  const base = String(process.env.API_URL || "").replace(/\/$/, "");
+  if (!fedexUrl || !/^https?:\/\//i.test(base)) return fedexUrl;
+  try {
+    const res = await axios.get(fedexUrl, { responseType: "arraybuffer", timeout: 20000 });
+    const pdf = Buffer.from(res.data);
+    if (pdf.subarray(0, 5).toString("latin1") !== "%PDF-") throw new Error("FedEx did not return a PDF");
+    const name = String(trackingNumber || "label").replace(/[^A-Za-z0-9_-]/g, "");
+    const key = `Public/Labels/${name}-${require("crypto").randomBytes(8).toString("hex")}.pdf`;
+    await storage.putFile(pdf, key, "application/pdf");
+    return `${base}/${key}`;
+  } catch (err) {
+    console.error(`FedEx label ${trackingNumber} not saved, keeping FedEx's link: ${err.message}`);
+    return fedexUrl;
+  }
+}
+
 // Records the payment and creates the FedEx shipment/label for a paid booking.
 // Safe to call more than once (Stripe retries, webhook + success page both firing):
 // an existing label is returned as-is and payment rows are only written once.
@@ -7250,7 +7274,9 @@ async function finalizePaidBooking(bookingID, amount) {
   if (bookingData.bookingTypeId == 6) {
     const fedexShipment = await createFedexShipmentLoc(bookingData);
     const trackingNumber = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].trackingNumber;
-    const label = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
+    const fedexLabel = fedexShipment.data.output.transactionShipments[0].pieceResponses[0].packageDocuments[0].url;
+    // our saved copy of the PDF (FedEx's link stops working)
+    const label = await keepLabel(fedexLabel, trackingNumber);
 
     bookingData.logisticCompanyTrackingNum = trackingNumber;
     bookingData.label = label;
@@ -7265,9 +7291,10 @@ async function finalizePaidBooking(bookingID, amount) {
     const pieces = fedexShipment.data.output.transactionShipments[0].pieceResponses || [];
     for (let i = 0; i < bookingData.packages.length; i++) {
       const piece = pieces[i] || pieces[0];
+      const pieceUrl = piece?.packageDocuments?.[0]?.url;
       await bookingData.packages[i].update({
         logisticCompanyTrackingNum: piece?.trackingNumber || trackingNumber,
-        fedexLabel: piece?.packageDocuments?.[0]?.url || label,
+        fedexLabel: !pieceUrl || pieceUrl === fedexLabel ? label : await keepLabel(pieceUrl, piece.trackingNumber),
       });
     }
     return normalizeLabels(label);
@@ -7287,6 +7314,10 @@ async function finalizePaidBooking(bookingID, amount) {
           transactionShipment.pieceResponses[0].packageDocuments[0].url,
       };
     });
+    // our saved copy of each PDF (FedEx's links stop working)
+    for (const shipment of extractedShipments) {
+      shipment.label = await keepLabel(shipment.label, shipment.trackingNumber);
+    }
 
     bookingData.logisticCompanyTrackingNum =
       extractedShipments.map((track) => ({
