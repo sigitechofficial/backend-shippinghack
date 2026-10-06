@@ -123,6 +123,8 @@ const {
   volumeFromBase,
   unitsPayload,
   checkPackages,
+  MAX_SIDE_IN,
+  MAX_LENGTH_PLUS_GIRTH_IN,
 } = require("../utils/units");
 const {
   calculateWeights,
@@ -508,7 +510,7 @@ async function createFedexShipmentLoc(bookingData) {
             units: "LB",
             value: localLabelWeight(pkg),
           },
-          ...(pkg.sizeId
+          ...(Number(pkg.length) > 0 && Number(pkg.width) > 0 && Number(pkg.height) > 0
             ? {
                 dimensions: {
                   length: Math.max(1, Math.ceil(Number(pkg.length) - 1e-6)),
@@ -3630,7 +3632,28 @@ async function localBox(packages, u) {
   const setup = await localSetup();
   if (!setup.company || setup.bands.length === 0) fail("Local delivery is not available right now. Please try again later.");
 
-  if (p.localBandId !== undefined && p.localBandId !== null && p.localBandId !== "") {
+  const hasBand = p.localBandId !== undefined && p.localBandId !== null && p.localBandId !== "";
+  const noSizeCard = p.sizeId === undefined || p.sizeId === null || p.sizeId === "";
+  // a weight band with the box's own sides typed by the customer
+  if (hasBand && noSizeCard && [p.length, p.width, p.height].some((v) => v !== undefined && v !== null && v !== "")) {
+    const q = localTypedQuote(setup, p.localBandId, p, u);
+    return {
+      weight: q.weight,
+      length: q.box.length,
+      width: q.box.width,
+      height: q.box.height,
+      volume: q.box.volume,
+      sizeId: null,
+      price: q.price,
+      chargedAs: localBandShown(q.band, u).label,
+      bySize: q.bySize,
+      weightBand: localBandShown(q.chosenBand, u),
+      // no size name: the box is shown by its sides only
+      size: { id: null, title: null, label: q.label, length: q.typed.length, width: q.typed.width, height: q.typed.height },
+    };
+  }
+
+  if (hasBand) {
     const q = localChoice(setup, p.localBandId, p.sizeId);
     return {
       weight: q.weight,
@@ -3672,6 +3695,70 @@ async function localBox(packages, u) {
     size: null,
   };
 }
+// The sides of a Local box typed by the customer (in the units shown) → whole inches,
+// each rounded up the way FedEx measures. Throws the message to show when a side is
+// missing or the box is bigger than FedEx takes.
+function localTypedSides(p, u) {
+  const fail = (msg) => {
+    throw new CustomException(msg, msg);
+  };
+  const typed = [p.length, p.width, p.height].map(Number);
+  if (!typed.every((v) => Number.isFinite(v) && v > 0)) {
+    fail(`Please enter the length, width and height in ${u.symbol.length}.`);
+  }
+  const [length, width, height] = typed.map((v) => Math.max(1, Math.ceil(toBase(v, u.rate.length) - 1e-6)));
+  const sorted = [length, width, height].sort((a, b) => b - a);
+  if (sorted[0] > MAX_SIDE_IN || sorted[0] + 2 * (sorted[1] + sorted[2]) > MAX_LENGTH_PLUS_GIRTH_IN) {
+    fail("This box is too big for Local delivery.");
+  }
+  return {
+    box: { length, width, height, volume: length * width * height },
+    typed: { length: typed[0], width: typed[1], height: typed[2] },
+    label: `${typed[0]} × ${typed[1]} × ${typed[2]} ${u.symbol.length}`,
+  };
+}
+
+// Price of a weight band (id) with a typed box size: the admin's Local band of the
+// larger of the band's top and the box's size weight.
+function localTypedQuote(setup, bandId, p, u) {
+  const fail = (msg) => {
+    throw new CustomException(msg, msg);
+  };
+  const chosen = setup.bands.find((b) => b.id === Number(bandId));
+  if (!chosen) fail("Please choose the weight.");
+  const sides = localTypedSides(p, u);
+  const q = localQuoteFor(setup, Number(chosen.endValue), sides.box.volume);
+  if (!q.band) fail("This box is too big for Local delivery.");
+  return { ...q, ...sides, chosenBand: chosen };
+}
+
+// Live price for a weight band + typed box size (the Local package screen; no login)
+async function localQuote(req, res) {
+  const { localBandId, length, width, height } = req.body || {};
+  const u = await currentUnits();
+  const setup = await localSetup();
+  if (!setup.company || setup.bands.length === 0) {
+    const msg = "Local delivery is not available right now. Please try again later.";
+    throw new CustomException(msg, msg);
+  }
+  const q = localTypedQuote(setup, localBandId, { length, width, height }, u);
+  return res.json(
+    returnFunction(
+      "1",
+      "Local price",
+      {
+        price: q.price,
+        chargedAs: localBandShown(q.band, u).label,
+        bySize: q.bySize,
+        sizeWeight: fromBase(q.sizeWeight, u.rate.weight),
+        label: q.label,
+        unit: u.symbol,
+      },
+      ""
+    )
+  );
+}
+
 /*
             6. Cancel booking
     _________________________________________
@@ -7808,6 +7895,7 @@ module.exports = {
   createOrderInt,
   dropOfAddress,
   createOrderLoc,
+  localQuote,
   reschedulePickup,
   cancelBooking,
   cancelbookingReacons,
