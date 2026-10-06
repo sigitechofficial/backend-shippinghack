@@ -130,6 +130,31 @@ async function serveRegeneratedBarcode(key, res) {
   return res.send(buffer);
 }
 
+// A file uploaded through the admin panel (multer) is written to this server's own
+// ./Public folder, but with STORAGE_DRIVER=s3 files are served from S3. When S3 doesn't
+// have it, serve the server's copy and copy it into S3 so it is kept there.
+// Returns true when it served the file.
+const PUBLIC_DIR = nodePath.join(__dirname, 'Public');
+async function serveLocalUploadIntoS3(key, res) {
+  const fsMod = require('fs');
+  const localPath = nodePath.join(__dirname, key);
+  if (!localPath.startsWith(PUBLIC_DIR + nodePath.sep)) return false;
+  let buffer;
+  try {
+    buffer = await fsMod.promises.readFile(localPath);
+  } catch (e) {
+    return false;
+  }
+  res.type(nodePath.extname(key) || 'application/octet-stream');
+  const contentType = res.get('Content-Type');
+  storage.putFile(buffer, key, contentType).catch((e) => {
+    console.error('Could not copy upload to S3:', key, e && e.message);
+  });
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(buffer);
+  return true;
+}
+
 app.use('/Public', async (req, res, next) => {
   const key = 'Public' + req.path;
   if (storage.isSensitiveKey(key)) {
@@ -152,6 +177,8 @@ app.use('/Public', async (req, res, next) => {
       });
       return stream.pipe(res);
     } catch (e) {
+      // uploaded through the admin panel but not in S3 yet
+      if (isNotFound(e) && (await serveLocalUploadIntoS3(key, res))) return;
       if (isBarcode && isNotFound(e)) {
         try {
           return await serveRegeneratedBarcode(key, res);
