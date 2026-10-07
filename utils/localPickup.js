@@ -82,7 +82,10 @@ function normalTime(t) {
 
 // The days and times the customer can choose, from FedEx's availability for this
 // address: [{ date, readyTimes: ["08:00", …], untilTimes: ["16:00", …], minHours }].
-// The window must be at least minHours long (FedEx's access time).
+// Only times FedEx can really do that day: the driver needs minHours (FedEx's access
+// time) before the area's daily cut-off, so "ready from" ends minHours before it, and
+// "available until" runs from 16:00 (FedEx's Puerto Rico rule) to the cut-off. Today:
+// only times not past yet.
 async function pickupDays(address) {
   const now = prNow();
   const options = await fedex.pickupAvailability(address, now.date);
@@ -90,12 +93,14 @@ async function pickupDays(address) {
   for (const o of options) {
     if (!o.available || !o.date || o.date < now.date) continue;
     const minHours = o.accessHours > 0 ? o.accessHours : 2;
-    const until = o.latestTimes.map(hhmm).filter((t) => t >= PR_MIN_CLOSE);
+    const cutOff = o.cutOffTime ? minutes(o.cutOffTime) : NaN;
+    const latest = Number.isNaN(cutOff) ? Infinity : Math.max(cutOff, minutes(PR_MIN_CLOSE));
+    const until = o.latestTimes.map(hhmm).filter((t) => t >= PR_MIN_CLOSE && minutes(t) <= latest);
     if (!until.length) continue;
     const lastUntil = minutes(until[until.length - 1]);
     const ready = o.readyTimes
       .map(hhmm)
-      .filter((t) => (!o.cutOffTime || t <= hhmm(o.cutOffTime)) && minutes(t) + minHours * 60 <= lastUntil)
+      .filter((t) => minutes(t) + minHours * 60 <= Math.min(lastUntil, Number.isNaN(cutOff) ? Infinity : cutOff))
       .filter((t) => o.date !== now.date || t >= now.time);
     if (!ready.length) continue;
     if (days.some((d) => d.date === o.date)) continue;
@@ -138,8 +143,40 @@ async function checkPickupChoice(address, pickupDate, pickupStartTime, pickupEnd
   return { pickupDate: date, pickupStartTime: start, pickupEndTime: end };
 }
 
+// Before payment: can FedEx still come on the order's day and window? An order can be
+// paid later (from the order history), when its time has passed. The driver needs the
+// day's access time between the later of (ready time, now) and the earlier of (the
+// customer's "until" time, the area's cut-off); a ready time a few minutes in the past
+// is fine, so paying right after making the order always works.
+// Returns null when FedEx can still come, otherwise the message to show.
+const PICKUP_PASSED =
+  "The pickup time you chose has passed. Please create the order again and choose a new pickup time.";
+async function pickupProblem(address, pickupDate, pickupStartTime, pickupEndTime) {
+  const date = String(pickupDate || "").slice(0, 10);
+  const start = minutes(pickupStartTime);
+  const end = minutes(pickupEndTime);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(start) || Number.isNaN(end)) return PICKUP_PASSED;
+  const now = prNow();
+  if (date < now.date) return PICKUP_PASSED;
+  let options;
+  try {
+    options = await fedex.pickupAvailability(address, now.date);
+  } catch (err) {
+    console.error("FedEx pickup availability failed:", err.message);
+    return "We couldn't check FedEx pickup times right now. Please try again in a moment.";
+  }
+  const day = options.find((o) => o.date === date && o.available);
+  if (!day) return PICKUP_PASSED;
+  const need = (day.accessHours > 0 ? day.accessHours : 2) * 60;
+  const from = date === now.date ? Math.max(start, minutes(now.time)) : start;
+  const cutOff = day.cutOffTime ? minutes(day.cutOffTime) : NaN;
+  const latest = Number.isNaN(cutOff) ? end : Math.min(end, cutOff);
+  return from + need <= latest ? null : PICKUP_PASSED;
+}
+
 module.exports = {
   localPickupSettings,
+  pickupProblem,
   saveLocalPickupSettings,
   pickupDays,
   checkPickupChoice,

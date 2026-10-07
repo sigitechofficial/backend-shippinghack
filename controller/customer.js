@@ -113,7 +113,7 @@ const PDFDocument = require("pdfkit");
 var CryptoJS = require("crypto-js");
 
 const { getDateAndTime } = require("../utils/helperFuncCompany");
-const { localPickupSettings, pickupDays, checkPickupChoice, prNow } = require("../utils/localPickup");
+const { localPickupSettings, pickupDays, checkPickupChoice, prNow, pickupProblem } = require("../utils/localPickup");
 const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
 const {
@@ -5595,6 +5595,9 @@ async function makepaymentBySavedCard(req, res) {
       returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
     );
   }
+  // Local order with FedEx pickup: FedEx must still be able to come at the chosen time
+  const pickupIssue = await pickupProblemBeforePayment(bookingData.id);
+  if (pickupIssue) return res.json(returnFunction("0", pickupIssue, {}, pickupIssue));
   const unpriced = noPriceYet(bookingData);
   if (unpriced) return res.json(returnFunction("0", unpriced, {}, unpriced));
 
@@ -5641,6 +5644,9 @@ async function makepaymentbynewcard(req, res) {
       returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
     );
   }
+  // Local order with FedEx pickup: FedEx must still be able to come at the chosen time
+  const pickupIssue = await pickupProblemBeforePayment(bookingData.id);
+  if (pickupIssue) return res.json(returnFunction("0", pickupIssue, {}, pickupIssue));
   const unpriced = noPriceYet(bookingData);
   if (unpriced) return res.json(returnFunction("0", unpriced, {}, unpriced));
 
@@ -7207,6 +7213,9 @@ async function checkoutSessionsCheck(req, res) {
       returnFunction("0", "This order has already been paid.", {}, "This order has already been paid.")
     );
   }
+  // Local order with FedEx pickup: FedEx must still be able to come at the chosen time
+  const pickupIssue = await pickupProblemBeforePayment(bookingData.id);
+  if (pickupIssue) return res.json(returnFunction("0", pickupIssue, {}, pickupIssue));
   const unpriced = noPriceYet(bookingData);
   if (unpriced) return res.json(returnFunction("0", unpriced, {}, unpriced));
 
@@ -7784,6 +7793,9 @@ async function createPaymentIntent(req, res) {
       returnFunction("0", "", {}, "This order has already been paid.")
     );
   }
+  // Local order with FedEx pickup: FedEx must still be able to come at the chosen time
+  const pickupIssue = await pickupProblemBeforePayment(bookingData.id);
+  if (pickupIssue) return res.json(returnFunction("0", "", {}, pickupIssue));
   const amount = convertToCents(bookingData.total);
   if (!(amount > 0)) {
     return res.json(
@@ -7871,16 +7883,27 @@ async function finalizeAppPayment(bookingId, intent, bookingTotal) {
   }
 }
 
-// A succeeded Stripe payment for this order: app / card payments, and website
-// Checkout payments made since their payment carries the order id. null if none.
+// The newest succeeded Stripe payment that really belongs to this order. The same
+// Stripe account has payments from other databases whose bookingId can repeat, so a
+// payment only counts when it has this order's id, was made after the order was
+// created, is for exactly the order's total, and (when Stripe has it) is from this
+// order's customer.
 async function findSucceededPayment(bookingId) {
   const id = Number(bookingId);
   if (!Number.isInteger(id) || id <= 0) return null;
+  const order = await booking.findByPk(id, { attributes: ["id", "total", "customerId", "createdAt"] });
+  if (!order) return null;
   const found = await stripe.paymentIntents.search({
     query: `metadata['bookingId']:'${id}' AND status:'succeeded'`,
-    limit: 10,
+    limit: 20,
   });
-  return (found.data || []).sort((a, b) => b.created - a.created)[0] || null;
+  const createdAt = new Date(order.createdAt).getTime();
+  const totalCents = Number(convertToCents(order.total));
+  const belongs = (p) =>
+    p.created * 1000 >= createdAt - 5 * 60 * 1000 &&
+    Number(p.amount_received) === totalCents &&
+    (!p.metadata?.customerId || String(p.metadata.customerId) === String(order.customerId));
+  return (found.data || []).filter(belongs).sort((a, b) => b.created - a.created)[0] || null;
 }
 
 // When the customer paid but the confirmation never reached us (website tab or app
@@ -7923,8 +7946,18 @@ async function recoverRecentPayments() {
   }
 }
 
-// Admin: make the FedEx label again for a paid order that has none (FedEx failed
-// after the payment). The order's own total is used, nothing is charged.
+// Before any payment of a Local order with FedEx pickup: null when FedEx can still come
+// on its day and window, otherwise the message to show (no payment is started then).
+// Every other order (International, drop-off) is never checked.
+async function pickupProblemBeforePayment(bookingId) {
+  const b = await booking.findByPk(bookingId, {
+    include: [{ model: addressDBS, as: "pickupAddress", attributes: ["streetAddress", "building", "floor", "apartment", "city", "postalCode"] }],
+    attributes: ["id", "bookingTypeId", "pickupMethod", "pickupDate", "pickupStartTime", "pickupEndTime"],
+  });
+  if (!b || Number(b.bookingTypeId) !== 6 || b.pickupMethod !== "pickup") return null;
+  return pickupProblem(b.pickupAddress || {}, b.pickupDate, b.pickupStartTime, b.pickupEndTime);
+}
+
 // Books FedEx to collect a paid FedEx-pickup Local order at its pickup address, on the
 // order's day and window (or the ones the admin gives when retrying). The confirmation
 // number and FedEx location are saved on the order; a refusal is saved as pickupError
@@ -7987,7 +8020,8 @@ async function bookOrderPickupOnce(bookingId, newTime) {
         phoneNumber: String(b.senderPhone || "").replace(/\D/g, "").slice(-10),
       },
       date,
-      readyTime,
+      // same day: a ready time that has already passed is sent to FedEx as now
+      readyTime: date === today && readyTime.slice(0, 5) < prNow().time ? `${prNow().time}:00` : readyTime,
       closeTime,
       sameDay: date === today,
       weightLb: (b.packages || []).reduce((sum, pkg) => sum + localLabelWeight(pkg), 0),
@@ -8062,6 +8096,8 @@ async function localPickupOptions(req, res) {
   return res.json(returnFunction("1", "Local pickup", { ...settings, days }, ""));
 }
 
+// Admin: make the FedEx label again for a paid order that has none (FedEx failed
+// after the payment). The order's own total is used, nothing is charged.
 async function retryOrderLabel(bookingId) {
   const b = await booking.findByPk(bookingId, {
     attributes: ["id", "paymentConfirmed", "label", "total", "bookingTypeId", "bookingStatusId"],
