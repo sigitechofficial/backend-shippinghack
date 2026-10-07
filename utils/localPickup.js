@@ -18,6 +18,14 @@ const PR_MIN_CLOSE = "16:00";
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
+// Local delivery is within Puerto Rico only: a 5-digit ZIP from 00601 to 00988
+const OUTSIDE_PUERTO_RICO = "Local delivery is only within Puerto Rico. Please choose a Puerto Rico address.";
+function isPuertoRicoZip(postalCode) {
+  const zip = String(postalCode || "").trim().slice(0, 5);
+  const n = parseInt(zip, 10);
+  return /^\d{5}$/.test(zip) && n >= 601 && n <= 988;
+}
+
 async function localPickupSettings() {
   const rows = await generalCharges.findAll({ where: { key: [MODE_KEY, FEE_KEY] }, attributes: ["key", "value"] });
   const value = (k) => rows.find((r) => r.key === k)?.value;
@@ -175,6 +183,8 @@ async function pickupProblem(address, pickupDate, pickupStartTime, pickupEndTime
 }
 
 module.exports = {
+  isPuertoRicoZip,
+  OUTSIDE_PUERTO_RICO,
   localPickupSettings,
   pickupProblem,
   saveLocalPickupSettings,

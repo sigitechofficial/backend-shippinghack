@@ -113,7 +113,15 @@ const PDFDocument = require("pdfkit");
 var CryptoJS = require("crypto-js");
 
 const { getDateAndTime } = require("../utils/helperFuncCompany");
-const { localPickupSettings, pickupDays, checkPickupChoice, prNow, pickupProblem } = require("../utils/localPickup");
+const {
+  localPickupSettings,
+  pickupDays,
+  checkPickupChoice,
+  prNow,
+  pickupProblem,
+  isPuertoRicoZip,
+  OUTSIDE_PUERTO_RICO,
+} = require("../utils/localPickup");
 const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
 const {
@@ -3473,14 +3481,8 @@ async function createOrderLoc(req, res) {
   );
   // Local delivery is within Puerto Rico only (the FedEx label is made for Puerto Rico):
   // both ZIP codes must be Puerto Rico ZIPs, 00601–00988
-  const inPuertoRico = (a) => {
-    const zip = String(a?.postalCode || "").trim().slice(0, 5);
-    const n = parseInt(zip, 10);
-    return /^\d{5}$/.test(zip) && n >= 601 && n <= 988;
-  };
-  if (!inPuertoRico(pickupAddressData) || !inPuertoRico(dropoffAddressData)) {
-    const msg = "Local delivery is only within Puerto Rico. Please choose a Puerto Rico address.";
-    throw new CustomException(msg, msg);
+  if (!isPuertoRicoZip(pickupAddressData?.postalCode) || !isPuertoRicoZip(dropoffAddressData?.postalCode)) {
+    throw new CustomException(OUTSIDE_PUERTO_RICO, OUTSIDE_PUERTO_RICO);
   }
 
   // two saved addresses with the same pin (or the same address twice) can't be shipped
@@ -8085,6 +8087,8 @@ async function localPickupOptions(req, res) {
     address = pickupAddress;
   }
   if (!address) throw new CustomException("Please choose the pickup address.", "Please choose the pickup address.");
+  // outside Puerto Rico FedEx can't find the address: say so instead of "try again"
+  if (!isPuertoRicoZip(address.postalCode)) throw new CustomException(OUTSIDE_PUERTO_RICO, OUTSIDE_PUERTO_RICO);
   let days;
   try {
     days = await pickupDays(address);
