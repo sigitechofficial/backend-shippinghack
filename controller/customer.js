@@ -3419,48 +3419,51 @@ async function createOrderLoc(req, res) {
   // drop-off at FedEx or FedEx pickup: the admin's setting when the order is made
   const pickupSettings = await localPickupSettings();
   const isPickup = pickupSettings.method === "pickup";
+  // Everything is checked on the addresses as sent (new) or saved (chosen) BEFORE a new
+  // address is saved: a refused order must not leave a saved address behind, or the
+  // customer's next try saves it a second time.
+  const addressAttributes = {
+    exclude: ["createdAt", "updatedAt", "status", "deleted", "structureTypeId", "warehouseId"],
+  };
+  const [pickupCandidate, dropoffCandidate] = await Promise.all([
+    addNewPickup ? pickupAddress : addressDBS.findByPk(pickupAddressId, { attributes: addressAttributes }),
+    addNewDropoff ? dropoffAddress : addressDBS.findByPk(dropoffAddressId, { attributes: addressAttributes }),
+  ]);
+  if (!pickupCandidate || !dropoffCandidate) {
+    const msg = "Please choose the pickup and drop-off addresses.";
+    throw new CustomException(msg, msg);
+  }
+  // Local delivery is within Puerto Rico only (the FedEx label is made for Puerto Rico):
+  // both ZIP codes must be Puerto Rico ZIPs, 00601–00988
+  if (!isPuertoRicoZip(pickupCandidate.postalCode) || !isPuertoRicoZip(dropoffCandidate.postalCode)) {
+    throw new CustomException(OUTSIDE_PUERTO_RICO, OUTSIDE_PUERTO_RICO);
+  }
+  // two saved addresses with the same pin (or the same address twice) can't be shipped
+  const hasPin = (a) =>
+    a && a.lat !== null && a.lat !== undefined && a.lat !== "" && a.lng !== null && a.lng !== undefined && a.lng !== "";
+  const samePin =
+    hasPin(pickupCandidate) &&
+    hasPin(dropoffCandidate) &&
+    Number(await getDistance(pickupCandidate.lat, pickupCandidate.lng, dropoffCandidate.lat, dropoffCandidate.lng)) < 0.01;
+  if ((!addNewPickup && !addNewDropoff && Number(pickupAddressId) === Number(dropoffAddressId)) || samePin) {
+    const msg = "Pickup and drop-off can't be the same place. Please choose another drop-off address.";
+    throw new CustomException(msg, msg);
+  }
+  // FedEx pickup: the day and window must be ones FedEx offers at this address. A
+  // drop-off order has no pickup day or time (older apps still send one; it's ignored).
+  const pickupChoice = isPickup
+    ? await checkPickupChoice(pickupCandidate, pickupDate, pickupStartTime, pickupEndTime)
+    : { pickupDate: null, pickupStartTime: null, pickupEndTime: null };
+
+  // now the new addresses are saved (an address the customer already saved is reused)
   let [pickupAddressIdDB, dropoffAddressIdDB] = await Promise.all([
-    addressAdder(
-      addNewPickup,
-      pickupAddress,
-      "pickup",
-      userId,
-      pickupAddressId
-    ),
-    addressAdder(
-      addNewDropoff,
-      dropoffAddress,
-      "dropoff",
-      userId,
-      dropoffAddressId
-    ),
+    addressAdder(addNewPickup, pickupAddress, "pickup", userId, pickupAddressId, { reuseSaved: true }),
+    addressAdder(addNewDropoff, dropoffAddress, "dropoff", userId, dropoffAddressId, { reuseSaved: true }),
   ]);
 
   let [pickupAddressData, dropoffAddressData, userData] = await Promise.all([
-    addressDBS.findByPk(pickupAddressIdDB, {
-      attributes: {
-        exclude: [
-          "createdAt",
-          "updatedAt",
-          "status",
-          "deleted",
-          "structureTypeId",
-          "warehouseId",
-        ],
-      },
-    }),
-    addressDBS.findByPk(dropoffAddressIdDB, {
-      attributes: {
-        exclude: [
-          "createdAt",
-          "updatedAt",
-          "status",
-          "deleted",
-          "structureTypeId",
-          "warehouseId",
-        ],
-      },
-    }),
+    addressDBS.findByPk(pickupAddressIdDB, { attributes: addressAttributes }),
+    addressDBS.findByPk(dropoffAddressIdDB, { attributes: addressAttributes }),
     user.findByPk(userId, {
       attributes: [
         "firstName",
@@ -3479,27 +3482,6 @@ async function createOrderLoc(req, res) {
     dropoffAddressData.lat,
     dropoffAddressData.lng
   );
-  // Local delivery is within Puerto Rico only (the FedEx label is made for Puerto Rico):
-  // both ZIP codes must be Puerto Rico ZIPs, 00601–00988
-  if (!isPuertoRicoZip(pickupAddressData?.postalCode) || !isPuertoRicoZip(dropoffAddressData?.postalCode)) {
-    throw new CustomException(OUTSIDE_PUERTO_RICO, OUTSIDE_PUERTO_RICO);
-  }
-
-  // two saved addresses with the same pin (or the same address twice) can't be shipped
-  const hasPin = (a) => a && a.lat !== null && a.lat !== "" && a.lng !== null && a.lng !== "";
-  if (
-    pickupAddressIdDB === dropoffAddressIdDB ||
-    (hasPin(pickupAddressData) && hasPin(dropoffAddressData) && Number(bookingDistance) < 0.01)
-  ) {
-    const msg = "Pickup and drop-off can't be the same place. Please choose another drop-off address.";
-    throw new CustomException(msg, msg);
-  }
-
-  // FedEx pickup: the day and window must be ones FedEx offers at this address. A
-  // drop-off order has no pickup day or time (older apps still send one; it's ignored).
-  const pickupChoice = isPickup
-    ? await checkPickupChoice(pickupAddressData, pickupDate, pickupStartTime, pickupEndTime)
-    : { pickupDate: null, pickupStartTime: null, pickupEndTime: null };
   const pickupFee = isPickup ? pickupSettings.fee : 0;
 
   // stored in base units (lb / in / in³): the top of the chosen weight band and the box size
@@ -6758,7 +6740,32 @@ function unitConversionsR(value, rate) {
   return (parseFloat(value) * 1) / parseFloat(rate);
 }
 
-async function addressAdder(addNew, address, type, userId, addressId) {
+// reuseSaved: a new address that is the same as one the customer already saved (same
+// title, street, building, floor, apartment, ZIP and pin) reuses it instead of saving a
+// copy, e.g. when the app sends it again after a refused or repeated request.
+async function addressAdder(addNew, address, type, userId, addressId, { reuseSaved = false } = {}) {
+  if (addNew && reuseSaved && address && address.save) {
+    const saved = await userAddress.findAll({
+      where: { userId, type, deleted: false },
+      attributes: ["addressDBId"],
+    });
+    const ids = saved.map((s) => s.addressDBId).filter(Boolean);
+    if (ids.length) {
+      const text = (v) => (v === undefined || v === null ? "" : String(v).trim());
+      const candidates = await addressDBS.findAll({
+        where: { id: ids, postalCode: text(address.postalCode) },
+        attributes: ["id", "title", "streetAddress", "building", "floor", "apartment", "lat", "lng"],
+        order: [["id", "DESC"]],
+      });
+      const same = candidates.find(
+        (c) =>
+          ["title", "streetAddress", "building", "floor", "apartment"].every((k) => text(c[k]) === text(address[k])) &&
+          Math.abs(Number(c.lat) - Number(address.lat)) < 1e-6 &&
+          Math.abs(Number(c.lng) - Number(address.lng)) < 1e-6
+      );
+      if (same) return same.id;
+    }
+  }
   if (addNew) {
     // adding address to DB and getting dropoff address Id
     const dropOffAddressData = await addressDBS.create(address);
