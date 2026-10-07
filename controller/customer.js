@@ -4908,6 +4908,8 @@ async function orderDetails(req, res) {
       "pickupStartTime",
       "pickupEndTime",
       "pickupConfirmation",
+      // International direct delivery by FedEx: FedEx's latest status
+      "carrierTracking",
     ],
   });
   // Charged weight and the booking-level measurements, in the booking's units
@@ -4920,6 +4922,8 @@ async function orderDetails(req, res) {
     bookingData.dataValues[key] = fromBase(bookingData[key], u.rate.length).toFixed(2);
   }
   bookingData.dataValues.weight = fromBase(bookingData.weight, u.rate.weight).toFixed(2);
+  // FedEx's latest status (a JSON column: text on some databases), or null
+  bookingData.dataValues.carrierTracking = require("../utils/fedexDirectTracking").readJson(bookingData.carrierTracking);
   // return res.json(returnFunction('1', `Booking Details ${bookingId}`, bookingData, ''))
   // Direct delivery: the USA warehouse shipped it straight to the customer (status 14
   // "shipped" in its history), so it never goes through Puerto Rico or a driver.

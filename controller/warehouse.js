@@ -866,6 +866,8 @@ async function getAllbookings(req, res) {
       "appUnitId",
       "consolidation",
       'deliveryTypeId',
+      // direct delivery by FedEx: FedEx's latest status
+      'carrierTracking',
     ], // TODO  , 'totalWeight'
   });
   //   return res.json({count:bookingData.length,cond , statusIds , statusCheck})
@@ -954,6 +956,8 @@ async function getAllbookings(req, res) {
       // shown in the booking's units; the Direct rule compares the base value (lb)
       chargedWeight: unitsConversion(chargedWeight, obj.appUnit.weightUnit.conversionRate),
       deliveryStatus: chargedWeight < 1000 && obj.deliveryTypeId == 1 ? 'Direct Delivery' : 'By Warehouse Delivery',
+      // direct delivery by FedEx: FedEx's latest status ({ stage, description, city, at, problem }) or null
+      carrierTracking: readCarrierTracking(obj.carrierTracking),
       unit: {
         weight: obj.appUnit.weightUnit.symbol,
         length: obj.appUnit.lengthUnit.symbol,
@@ -5785,8 +5789,16 @@ async function toDirectDelivery(req, res) {
   return res.json(returnFunction("1", "Success", {}, ""));
 }
 
-async function markDeliver(req, res) {
-  const bookingId = req.body.bookingId;
+// FedEx's latest status kept on an order (a JSON column: text on some databases)
+function readCarrierTracking(value) {
+  return require("../utils/fedexDirectTracking").readJson(value);
+}
+
+// Completes a delivery: status Delivered + history, the driver's pay (when a driver
+// was assigned), the admin earning and the "delivered" email. Used by the warehouse's
+// "Mark delivered" and by FedEx tracking for direct deliveries. Returns { ok, error,
+// message } instead of answering a request.
+async function completeDelivery(bookingId) {
 
   const dt = Date.now();
   const DT = new Date(dt);
@@ -5796,7 +5808,7 @@ async function markDeliver(req, res) {
 
   const assigned = await booking.findByPk(bookingId, { attributes: ["id", "deliveryDriverId"] });
   if (!assigned) {
-    return res.json(returnFunction("0", "", {}, "Booking not found"));
+    return { ok: false, message: "", error: "Booking not found" };
   }
   // with an assigned driver the driver is paid and the business keeps paid − driver pay
   let driverPay = null;
@@ -5805,7 +5817,7 @@ async function markDeliver(req, res) {
     if (!driverPay.matched) {
       const message =
         "The assigned driver's vehicle type has no distance price for this delivery. Add a distance band in Pricing first.";
-      return res.json(returnFunction("0", message, {}, message));
+      return { ok: false, message, error: message };
     }
   }
 
@@ -5871,6 +5883,12 @@ async function markDeliver(req, res) {
   deliveredMail(to, name, bookingData.trackingId, arrived.length, bookingData.logisticCompany.title, consolidation, await weightTextFor(bookingData.appUnitId, totalWeight.chargedWeight), bookingData.total, bookingData.dropoffAddress)
 
 
+  return { ok: true };
+}
+
+async function markDeliver(req, res) {
+  const result = await completeDelivery(req.body.bookingId);
+  if (!result.ok) return res.json(returnFunction("0", result.message, {}, result.error));
   return res.json(returnFunction("1", "Success", {}, ""));
 }
 
@@ -7477,6 +7495,7 @@ module.exports = {
   getAllCategory,
   getLogCompaniesForFilter,
   toDirectDelivery,
+  completeDelivery,
   markDeliver,
   updateBookingStatus,
   allBookingStatus,

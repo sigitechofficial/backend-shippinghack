@@ -275,6 +275,13 @@ if (process.env.DISABLE_PAYMENT_RECOVERY !== 'true') {
       .bookWaitingPickups()
       .catch((err) => console.error('Waiting pickups job failed:', err && err.message));
   });
+  // International orders shipped direct with FedEx follow FedEx tracking (status, the
+  // customer's notifications, and Delivered when FedEx delivers)
+  require('node-cron').schedule('*/30 * * * *', () => {
+    require('./utils/fedexDirectTracking')
+      .checkDirectFedexOrders()
+      .catch((err) => console.error('FedEx direct tracking job failed:', err && err.message));
+  });
 }
 
 // Graceful shutdown

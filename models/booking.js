@@ -224,6 +224,12 @@ module.exports = (sequelize, DataTypes) =>{
         pickupError:{
             type:DataTypes.STRING(500),
             allowNull:true,
+        },
+        // International direct delivery by FedEx: FedEx's latest tracking status, kept up
+        // to date by a job ({ stage, code, description, city, state, at, checkedAt, ... })
+        carrierTracking:{
+            type:DataTypes.JSON,
+            allowNull:true,
         }
 
     });
