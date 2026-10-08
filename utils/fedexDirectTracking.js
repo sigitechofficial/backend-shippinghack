@@ -42,8 +42,8 @@ function stageOf(code) {
 // The customer's notification for a new stage, in their language ('es' = Spanish)
 const TEXT = {
   picked_up: {
-    en: ["FedEx picked up your order", "Order @tid is on its way to you."],
-    es: ["FedEx recogió tu pedido", "El pedido @tid va en camino hacia ti."],
+    en: ["FedEx picked up your order", "Order @tid is on its way to the delivery address."],
+    es: ["FedEx recogió tu pedido", "El pedido @tid va en camino a la dirección de entrega."],
   },
   in_transit: {
     en: ["Your order is on the way", "Order @tid is moving with FedEx@place."],
@@ -62,8 +62,8 @@ const TEXT = {
     es: ["Problema con la entrega", "FedEx reportó un problema al entregar el pedido @tid. Lo estamos revisando."],
   },
   ready_for_pickup: {
-    en: ["Waiting at FedEx", "Order @tid is waiting for you at a FedEx location@place."],
-    es: ["Esperando en FedEx", "El pedido @tid te espera en una ubicación de FedEx@place."],
+    en: ["Waiting at FedEx", "Order @tid is waiting at a FedEx location for pickup@place."],
+    es: ["Esperando en FedEx", "El pedido @tid está esperando en una ubicación de FedEx para ser recogido@place."],
   },
   cancelled: {
     en: ["FedEx shipment cancelled", "The FedEx shipment of order @tid was cancelled. We are checking it."],
