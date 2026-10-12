@@ -60,6 +60,7 @@ const {
 } = require("../models");
 const getDistance = require("../utils/distanceCalculator");
 const { bandFor } = require("../utils/distanceBands");
+const storage = require("../utils/storage");
 const { currentUnits, unitsFor, fromBase, volumeFromBase } = require("../utils/units");
 const { calculateWeights } = require("../utils/pricing");
 // The calculator returns km (the unit distance bands are stored in); drivers see
@@ -2379,8 +2380,12 @@ async function disableVehicImage(req, res) {
     return res.json(response);
   }
 
-  // Delete the image file
-  await fs.unlink(vehimage.image);
+  // Delete the image file (S3 or local disk). A missing file must not block removing the record.
+  try {
+    await storage.deleteFile(vehimage.image);
+  } catch (error) {
+    console.error("Vehicle image file not deleted:", vehimage.image, error?.message);
+  }
 
   // Remove the record from the database
   await vehicleImage.destroy({
