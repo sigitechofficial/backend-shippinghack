@@ -2361,6 +2361,28 @@ async function inTransitBookings(req, res) {
     ],
     attributes: { exclude: ["createdAt", "updatedAt", "userId"] },
   });
+  // the orders inside each group ({ id, trackingId }), so lists can show and search them
+  const idsOf = (group) =>
+    String(group.bookingIds || "")
+      .split(",")
+      .map((id) => Number(id.trim()))
+      .filter((id) => Number.isInteger(id) && id > 0);
+  const allGroups = [...outgoing, ...incoming];
+  const orderIds = [...new Set(allGroups.flatMap(idsOf))];
+  const orderRows = orderIds.length
+    ? await booking.findAll({
+        where: { id: orderIds },
+        attributes: ["id", "trackingId"],
+      })
+    : [];
+  const trackingById = new Map(orderRows.map((row) => [row.id, row.trackingId]));
+  allGroups.forEach((group) =>
+    group.setDataValue(
+      "orders",
+      idsOf(group).map((id) => ({ id, trackingId: trackingById.get(id) || null }))
+    )
+  );
+
   let outOngoing = outgoing.filter((ele) => ele.status === "On way");
   let outCompleted = outgoing.filter((ele) => ele.status === "Delivered");
   let inOngoing = incoming.filter((ele) => ele.status === "On way");
