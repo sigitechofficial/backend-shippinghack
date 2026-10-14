@@ -2225,8 +2225,15 @@ async function signInUser(req, res) {
       ],
     ],
   });
-  // Business accounts are website-only for now: refuse them on the mobile app
-  if (userData && userData.userTypeId === 3 && isMobileAppRequest(req)) {
+  // Business accounts are website-only for now: refuse them on the mobile app.
+  // Social logins have no password, so they are refused here; password logins
+  // further down, once the password is right.
+  if (
+    userData &&
+    userData.userTypeId === 3 &&
+    signedBy &&
+    isMobileAppRequest(req)
+  ) {
     return res.json(businessAppBlockedResponse(userData.languageCheck));
   }
   // if user not found and signedBy (google or apple) then create new account
@@ -2507,6 +2514,9 @@ async function signInUser(req, res) {
       "Bad credentials",
       "Please enter correct password to continue"
     );
+  if (userData.userTypeId === 3 && isMobileAppRequest(req)) {
+    return res.json(businessAppBlockedResponse(userData.languageCheck));
+  }
   // add device Token if not found
   const found = userData.deviceTokens.find((ele) => ele.tokenId === dvToken);
   if (!found)
@@ -4434,14 +4444,9 @@ async function updateProfile(req, res) {
   if (numericUserTypeId === 1 && userfind.userTypeId === 3) {
     // console.log("If condition IN===================================>")
     // console.log("userTypeId in function ===========>",userTypeId)
-    const checkSubscription = await userPlan.findAll({
-      where: {
-        userId: userId,
-        subscriptionStatus: "Active",
-      },
-    });
+    const checkSubscription = await BusinessMembership.activeBusinessPlan(userId);
 
-    if (checkSubscription.length > 0) {
+    if (checkSubscription) {
       throw new CustomException("First cancel your Subscription");
     }
 
@@ -5559,13 +5564,7 @@ async function makepaymentBySavedCard(req, res) {
   const userType = userData.userTypeId;
   if (userType === 3) {
     console.log("Bussiness User --------------->");
-    let subscriptionId = await userPlan.findOne({
-      where: {
-        userId: UserId,
-        subscriptionStatus: "Active",
-      },
-      attributes: ["subscriptionPlanID"],
-    });
+    let subscriptionId = await BusinessMembership.activeBusinessPlan(UserId);
 
     if (!subscriptionId) {
       throw new CustomException(
@@ -7542,9 +7541,11 @@ async function stripeWebhook(req, res) {
     const obj = event.data.object;
     if (obj.metadata && obj.metadata.type === BusinessMembership.MEMBERSHIP_TYPE) {
       try {
-        const subscription = event.type === 'checkout.session.completed'
-          ? await BusinessMembership.stripe.subscriptions.retrieve(obj.subscription)
-          : obj;
+        // always the current subscription from Stripe (events can arrive late or
+        // out of order, and their shape depends on the endpoint's API version)
+        const subscription = await BusinessMembership.stripe.subscriptions.retrieve(
+          event.type === 'checkout.session.completed' ? obj.subscription : obj.id
+        );
         await BusinessMembership.saveSubscription(Number(obj.metadata.userId), subscription);
       } catch (err) {
         console.error(`stripeWebhook: business membership not saved: ${err.message}`);

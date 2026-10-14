@@ -12,6 +12,7 @@ const {
   ensureStripeCustomer,
   saveSubscription,
   activeBusinessPlan,
+  openStripePlan,
   membershipView,
 } = require("../utils/businessMembership");
 const { businessLevelStatus } = require("../utils/businessLevels");
@@ -67,6 +68,10 @@ async function createMembershipCheckout(req, res) {
   if (!plan) fail("Choose monthly or yearly billing");
   await businessUser(req.user.id);
   if (await activeBusinessPlan(req.user.id)) fail("Your business membership is already active");
+  // a membership whose renewal failed is still open on Stripe (it retries the
+  // card): a second one would charge twice
+  if (await openStripePlan(req.user.id))
+    fail("Your membership payment didn't go through and is being retried. Please contact support to update your card.");
 
   const settings = await membershipSettings();
   const amount = Math.round(Number(settings[plan.priceField]) * 100);

@@ -60,9 +60,25 @@ async function saveSubscription(userId, subscription) {
     subscriptionStatus: planStatus(subscription.status),
     shipLimit: 0, // no shipment cap: levels are earned from volume
   };
-  let plan = await userPlan.findOne({ where: { subscriptionPlanID: subscription.id } });
+  let plan = await userPlan.findOne({
+    where: { subscriptionPlanID: subscription.id },
+    order: [["id", "ASC"]],
+  });
   if (plan) await plan.update(values);
-  else plan = await userPlan.create(values);
+  else {
+    plan = await userPlan.create(values);
+    // the success page and the webhook can save the same subscription at once:
+    // keep the first row only
+    const rows = await userPlan.findAll({
+      where: { subscriptionPlanID: subscription.id },
+      order: [["id", "ASC"]],
+    });
+    if (rows.length > 1) {
+      await userPlan.destroy({ where: { id: rows.slice(1).map((r) => r.id) } });
+      plan = rows[0];
+      await plan.update(values);
+    }
+  }
   if (values.subscriptionStatus === "Active") {
     await user.update({ userTypeId: 3 }, { where: { id: userId } });
   }
@@ -83,6 +99,8 @@ async function syncPlan(plan) {
 
 // The user's Active business plan, or null. A Stripe plan past its period end is
 // re-checked first, so a renewal (or a cancellation) is picked up without webhooks.
+// A Stripe plan whose renewal failed (Unpaid/Incomplete) is re-checked too: Stripe
+// retries the card, and a later success makes it Active again.
 async function activeBusinessPlan(userId) {
   let plan = await userPlan.findOne({
     where: { userId, subscriptionStatus: "Active" },
@@ -92,7 +110,20 @@ async function activeBusinessPlan(userId) {
     const end = plan.expiryDate ? new Date(plan.expiryDate).getTime() : 0;
     if (end < Date.now()) plan = await syncPlan(plan);
   }
+  if (!plan || plan.subscriptionStatus !== "Active") {
+    const pending = await openStripePlan(userId);
+    if (pending) plan = await syncPlan(pending);
+  }
   return plan && plan.subscriptionStatus === "Active" ? plan : null;
+}
+
+// The user's latest Stripe plan whose payment is still being retried, or null
+async function openStripePlan(userId) {
+  const latest = await userPlan.findOne({
+    where: { userId, subscriptionStatus: ["Unpaid", "Incomplete"] },
+    order: [["id", "DESC"]],
+  });
+  return latest && isStripeSubscriptionId(latest.subscriptionPlanID) ? latest : null;
 }
 
 // What the website shows: the membership, with renewal / cancellation from Stripe.
@@ -133,5 +164,6 @@ module.exports = {
   saveSubscription,
   syncPlan,
   activeBusinessPlan,
+  openStripePlan,
   membershipView,
 };

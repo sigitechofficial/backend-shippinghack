@@ -91,15 +91,18 @@ async function businessLevelStatus(userId, now = new Date()) {
   const levels = await businessLevels();
   const resetMonth = await levelResetMonth();
 
-  // only orders since the membership started; at most the last 14 months matter
-  const windowStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 13, 1));
+  // only orders since the membership started; a level earned in any month of last
+  // year can still be kept now (until the reset month of this year), so January of
+  // last year is the oldest month that matters
+  const windowStart = new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1));
   const memberSince = plan.buyDate ? new Date(plan.buyDate) : windowStart;
   const since = memberSince > windowStart ? memberSince : windowStart;
   const counts = await shipmentsByMonth(userId, since);
 
   // every month in the window: the level it earned and how long that level lasts
   let best = { level: levels[0], earnedIn: null, keptUntil: null };
-  for (let i = 13; i >= 0; i--) {
+  const monthsBack = 12 + now.getUTCMonth(); // January of last year .. this month
+  for (let i = monthsBack; i >= 0; i--) {
     const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
     const year = d.getUTCFullYear();
     const month = d.getUTCMonth() + 1;
@@ -108,7 +111,8 @@ async function businessLevelStatus(userId, now = new Date()) {
     const level = levelForCount(count, levels);
     const keptUntil = new Date(Date.UTC(year + 1, resetMonth - 1, 1));
     if (keptUntil <= now) continue;
-    if (level.minShipments > best.level.minShipments) {
+    // a later month with the same level keeps it longer, so it wins a tie
+    if (level.minShipments >= best.level.minShipments) {
       best = { level, earnedIn: monthKey(year, month), keptUntil };
     }
   }

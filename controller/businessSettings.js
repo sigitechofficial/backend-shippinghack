@@ -75,8 +75,9 @@ async function updateBusinessLevel(req, res) {
 async function updateBusinessSettings(req, res) {
   const settings = await currentSettings();
   const values = {
-    monthlyPrice: toNumber(req.body.monthlyPrice, "Monthly price"),
-    yearlyPrice: toNumber(req.body.yearlyPrice, "Yearly price"),
+    // Stripe can't charge less than $0.50
+    monthlyPrice: toNumber(req.body.monthlyPrice, "Monthly price", { min: 0.5 }),
+    yearlyPrice: toNumber(req.body.yearlyPrice, "Yearly price", { min: 0.5 }),
     levelResetMonth: toNumber(req.body.levelResetMonth, "Level reset month", { min: 1, max: 12, integer: true }),
     storageExtensionDays: toNumber(req.body.storageExtensionDays, "Days per extension", { min: 1, integer: true }),
     storageExtensionFee: toNumber(req.body.storageExtensionFee, "Extension fee"),
