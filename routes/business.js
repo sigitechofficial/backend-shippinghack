@@ -2038,6 +2038,7 @@ router.get("/membership",validateToken,asyncMiddleware(businessMembershipControl
 router.post("/membership/checkout",validateToken,asyncMiddleware(businessMembershipController.createMembershipCheckout))
 router.post("/membership/confirm",validateToken,asyncMiddleware(businessMembershipController.confirmMembershipCheckout))
 router.post("/membership/cancel",validateToken,asyncMiddleware(businessMembershipController.cancelMembership))
+router.get("/level",validateToken,asyncMiddleware(businessMembershipController.getBusinessLevel))
 
 router.put("/convertCustomer",validateToken,asyncMiddleware(businessController.customerConvert))
 

@@ -14,6 +14,7 @@ const {
   activeBusinessPlan,
   membershipView,
 } = require("../utils/businessMembership");
+const { businessLevelStatus } = require("../utils/businessLevels");
 
 const returnFunction = (status, message, data, error) => ({ status, message, data, error });
 
@@ -143,9 +144,20 @@ async function cancelMembership(req, res) {
   return res.json(returnFunction("1", "Your membership will end at the end of the paid period", { membership }, ""));
 }
 
+/*
+        5. The business level now: earned from shipments in a month, kept until
+           a higher one is reached or the reset month of the next year
+*/
+async function getBusinessLevel(req, res) {
+  const status = await businessLevelStatus(req.user.id);
+  if (!status) fail("You don't have an active business membership");
+  return res.json(returnFunction("1", "Business level", status, ""));
+}
+
 module.exports = {
   getMembership,
   createMembershipCheckout,
   confirmMembershipCheckout,
   cancelMembership,
+  getBusinessLevel,
 };

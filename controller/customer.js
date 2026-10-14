@@ -3126,18 +3126,7 @@ async function createOrderInt(req, res) {
         "Currently, you don't have a subscription. As a business user, please purchase a subscription to continue creating orders.If you wish to switch to a normal user, please go to your profile and update your status."
       );
     }
-    // Enforce the plan's monthly shipment limit
-    const bookingCount = await checkBookingLimit(userId);
-    const shipLimit = parseInt(subscriptionId.shipLimit, 10);
-    if (
-      typeof bookingCount === "number" &&
-      shipLimit > 0 &&
-      bookingCount >= shipLimit
-    ) {
-      throw new CustomException(
-        "You have reached your monthly shipment limit for your plan"
-      );
-    }
+    // No monthly shipment limit: shipping more earns a higher level (Shipito style)
   }
   // sizes and weights are typed in the units the admin chose
   const u = await currentUnits();
