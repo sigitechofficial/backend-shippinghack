@@ -15,7 +15,7 @@ module.exports=(sequelize,DataTypes)=>{
 
         },
         price:{
-            type:DataTypes.INTEGER,
+            type:DataTypes.DECIMAL(10,2),
             allowNUll:false,
         },
         subscriptionPlanID:{

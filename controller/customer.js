@@ -125,6 +125,7 @@ const {
 const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
 const { isMobileAppRequest, businessAppBlockedResponse } = require("../utils/clientApp");
+const BusinessMembership = require("../utils/businessMembership");
 const {
   currentUnits,
   unitsFor,
@@ -2419,7 +2420,10 @@ async function signInUser(req, res) {
       checkusersubscriptionStatus
     );
 
-    if (checkusersubscriptionStatus) {
+    if (
+      checkusersubscriptionStatus &&
+      !BusinessMembership.isStripeSubscriptionId(checkusersubscriptionStatus.subscriptionPlanID)
+    ) {
       const subscriptionDetails = await Braintree.getSubscriptionDetails(
         checkusersubscriptionStatus.subscriptionPlanID
       );
@@ -3115,13 +3119,7 @@ async function createOrderInt(req, res) {
   let language = await findLanguage(userId);
   const businessUser = await user.findByPk(userId);
   if (businessUser.userTypeId === 3) {
-    let subscriptionId = await userPlan.findOne({
-      where: {
-        userId: userId,
-        subscriptionStatus: "Active",
-      },
-      attributes: ["subscriptionPlanID", "shipLimit"],
-    });
+    let subscriptionId = await BusinessMembership.activeBusinessPlan(userId);
 
     if (!subscriptionId) {
       throw new CustomException(
@@ -7544,6 +7542,27 @@ async function stripeWebhook(req, res) {
   } catch (err) {
     console.log(`Error deconstructing event: ${err.message}`);
     return res.status(400).send(`Error deconstructing event: ${err.message}`);
+  }
+
+  // Business membership (subscription checkout + later renewals/cancellations)
+  if (
+    (event.type === 'checkout.session.completed' && event.data.object.mode === 'subscription') ||
+    event.type === 'customer.subscription.updated' ||
+    event.type === 'customer.subscription.deleted'
+  ) {
+    const obj = event.data.object;
+    if (obj.metadata && obj.metadata.type === BusinessMembership.MEMBERSHIP_TYPE) {
+      try {
+        const subscription = event.type === 'checkout.session.completed'
+          ? await BusinessMembership.stripe.subscriptions.retrieve(obj.subscription)
+          : obj;
+        await BusinessMembership.saveSubscription(Number(obj.metadata.userId), subscription);
+      } catch (err) {
+        console.error(`stripeWebhook: business membership not saved: ${err.message}`);
+        return res.status(500).send('Membership could not be saved');
+      }
+    }
+    return res.json({ received: true });
   }
 
   if (event.type === 'checkout.session.completed') {

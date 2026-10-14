@@ -5859,7 +5859,7 @@ async function adminBussinessCheck(req, res) {
                     where: {
                         subscriptionStatus: 'Active',
                     },
-                    attributes: ['subscriptionPlanID']
+                    attributes: ['subscriptionPlanID', 'price', 'subscriptionStatus']
                 }
             ],
             attributes: ['id','firstName', 'lastName', 'businessName'],
@@ -5867,7 +5867,10 @@ async function adminBussinessCheck(req, res) {
 
        // console.log("Customer Get Details", customerGet);
 
-        const subscriptionIds = customerGet.map(user => user.userPlan?.dataValues?.subscriptionPlanID).filter(id => id);
+        // Stripe memberships (sub_...) are read from userPlans below, not Braintree
+        const subscriptionIds = customerGet
+            .map(user => user.userPlan?.dataValues?.subscriptionPlanID)
+            .filter(id => id && !String(id).startsWith('sub_'));
 
         //console.log("Subscription IDs of all the users----->", subscriptionIds);
 
@@ -5896,6 +5899,18 @@ async function adminBussinessCheck(req, res) {
         }
 
         const sub = subscription && subscription.subscription;
+        if (planId && String(planId).startsWith('sub_')) {
+            return {
+                ...user.dataValues,
+                details: {
+                    subscriptionId: planId,
+                    subscription_price: user.userPlan.price,
+                    subscription_status: user.userPlan.subscriptionStatus,
+                    subscription_transactionStatus: 'Stripe',
+                    completedBookings: bookingCount,
+                },
+            };
+        }
         const obj = {
             subscriptionId: (sub && sub.id) || planId || null,
             subscription_price: (sub && sub.price) ?? null,

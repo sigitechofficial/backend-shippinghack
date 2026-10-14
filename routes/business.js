@@ -2032,6 +2032,13 @@ router.get("/getSubID",validateToken,asyncMiddleware(businessController.getCusto
  *                   type: string
  *                   example: 'Internal server error'
  */
+// Business membership on Stripe (one membership, monthly or yearly)
+const businessMembershipController = require('../controller/businessMembership');
+router.get("/membership",validateToken,asyncMiddleware(businessMembershipController.getMembership))
+router.post("/membership/checkout",validateToken,asyncMiddleware(businessMembershipController.createMembershipCheckout))
+router.post("/membership/confirm",validateToken,asyncMiddleware(businessMembershipController.confirmMembershipCheckout))
+router.post("/membership/cancel",validateToken,asyncMiddleware(businessMembershipController.cancelMembership))
+
 router.put("/convertCustomer",validateToken,asyncMiddleware(businessController.customerConvert))
 
 router.post("/fedexGetInfo",asyncMiddleware(businessController.fedexGet))
