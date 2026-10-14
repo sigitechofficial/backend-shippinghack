@@ -21,6 +21,24 @@ module.exports = async function validateToken(req,res, next){
         const validToken = verify(acccessToken, process.env.JWT_ACCESS_SECRET);
         req.user = validToken;
 
+        // Customer, driver and panel logins are signed with the same secret and
+        // their ids overlap (separate tables), so a customer's token with id 1
+        // would otherwise pass as warehouse/admin id 1. On the admin, warehouse
+        // and business mounts the token must belong to that panel account
+        // itself: same id AND same email. (Merchant tokens are users-table
+        // accounts, so /merchant is left as it was.)
+        if (['/admin', '/warehouse', '/business'].includes(req.baseUrl)) {
+            const account = await warehouse.findByPk(validToken.id, {
+                attributes: ['id', 'email'],
+            });
+            const sameEmail =
+                account &&
+                account.email &&
+                String(account.email).toLowerCase() ===
+                    String(validToken.email || '').toLowerCase();
+            if (!sameEmail) throw new Error();
+        }
+
         // Acting-as-warehouse applies ONLY to the warehouse panel. This same
         // middleware also guards the /admin and /merchant routers, which must
         // keep the admin's real identity — so gate the override on the mount.
