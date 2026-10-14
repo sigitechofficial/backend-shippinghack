@@ -14166,4 +14166,12 @@ router.post("/checktrackingNumber/:trackNumber",asyncMiddleware(adminController.
  *                   example: 'Internal server error'
  */
 router.post("/createService",validateToken,checkPermission,asyncMiddleware(adminController.createService))
+
+// Business membership: levels (earned from shipments per month) and settings.
+// Admin owner only.
+const businessSettingsController = require('../controller/businessSettings');
+const adminOwnerOnly = require('../middleware/adminOwnerOnly');
+router.get("/business/settings",validateToken,adminOwnerOnly,asyncMiddleware(businessSettingsController.getBusinessSettings))
+router.put("/business/level",validateToken,adminOwnerOnly,asyncMiddleware(businessSettingsController.updateBusinessLevel))
+router.put("/business/settings",validateToken,adminOwnerOnly,asyncMiddleware(businessSettingsController.updateBusinessSettings))
 module.exports = router;
