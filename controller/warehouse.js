@@ -1191,6 +1191,13 @@ async function bookingDetailsById(req, res) {
       // shipped direct with FedEx: FedEx's latest status (null otherwise)
       carrierTracking: readCarrierTracking(bookingData.carrierTracking),
       total: bookingData.total,
+      // business orders: shipping, level discount and processing fee behind the total
+      priceBreakdown: {
+        subTotal: bookingData.subTotal,
+        discount: bookingData.discount,
+        processingFee: bookingData.processingFee,
+        businessLevel: bookingData.businessLevel,
+      },
       bookingStatus: bookingData.bookingStatus,
       //   vehicleType: `${bookingData.vehicleType.title}`,
       //^ updated

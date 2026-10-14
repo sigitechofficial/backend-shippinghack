@@ -74,6 +74,17 @@ module.exports = (sequelize, DataTypes) =>{
             allowNull: true,
             defaultValue: '0.00'
         },
+        // Business orders: processing fee for all packages, and the level that
+        // set the discount and fee (null for normal customers)
+        processingFee: {
+            type: DataTypes.DECIMAL(10,2),
+            allowNull: true,
+            defaultValue: '0.00'
+        },
+        businessLevel: {
+            type: DataTypes.STRING(50),
+            allowNull: true,
+        },
         total: {
             type: DataTypes.DECIMAL(10,2),
             allowNull: true,

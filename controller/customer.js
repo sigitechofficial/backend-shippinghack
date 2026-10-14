@@ -126,6 +126,7 @@ const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
 const { isMobileAppRequest, businessAppBlockedResponse } = require("../utils/clientApp");
 const BusinessMembership = require("../utils/businessMembership");
+const { businessOrderPrice } = require("../utils/businessPricing");
 const {
   currentUnits,
   unitsFor,
@@ -4728,32 +4729,27 @@ async function chooseLogisticCompany(req, res) {
   console.log("Customer Data----------->: ", customer);
 
   if (customer.userTypeId === 3 && bookingData.bookingTypeId === 1) {
-    console.log("Business User Logistic Choose------------>");
-    let subscriptionId = await userPlan.findOne({
-      where: {
-        userId: customerId,
-        subscriptionStatus: "Active",
-      },
-      attributes: ["subscriptionPlanID"],
-    });
-
-    if (!subscriptionId) {
-      throw new CustomException(
-        "Invalid Subscription Id or You don't have any Subscription"
-      );
+    // Business: the level's discount off shipping + its processing fee per package
+    const packageCount = (bookingData.packages || []).filter((p) =>
+      ["arrived", "pending"].includes(p.arrived)
+    ).length;
+    const price = await businessOrderPrice(customerId, charges, packageCount);
+    if (!price) {
+      const msg =
+        "Your business membership isn't active. Please renew it on our website to continue.";
+      throw new CustomException(msg, msg);
     }
-    const subscriptionPlanID = subscriptionId.dataValues.subscriptionPlanID;
-    // E2E-B14: the local plan row is Active here, so a Braintree outage
-    // falls back to discount 0 instead of blocking the booking
-    const discountAmount = await discountget(subscriptionPlanID, true);
-    const realDiscount = applyPercentagediscount(charges, discountAmount);
-    const totalCharges = realDiscount;
-    bookingData.subTotal = charges;
-    bookingData.discount = discountAmount;
-    bookingData.total = totalCharges;
+    bookingData.subTotal = price.subTotal;
+    bookingData.discount = price.discount;
+    bookingData.processingFee = price.processingFee;
+    bookingData.businessLevel = price.level;
+    bookingData.total = price.total;
     await bookingData.save();
   } else {
     bookingData.subTotal = charges;
+    bookingData.discount = 0;
+    bookingData.processingFee = 0;
+    bookingData.businessLevel = null;
     bookingData.total = charges;
     await bookingData.save();
   }
@@ -4761,6 +4757,7 @@ async function chooseLogisticCompany(req, res) {
   await billingDetails.create({
     subTotal: bookingData.subTotal,
     discount: bookingData.discount,
+    serviceCharge: bookingData.processingFee,
     total: bookingData.total,
     bookingId: bookingData.id,
   });
@@ -4887,6 +4884,9 @@ async function orderDetails(req, res) {
       "senderName",
       "subTotal",
       "discount",
+      // business orders: processing fee and the level behind the prices
+      "processingFee",
+      "businessLevel",
       "total",
       "barcode",
       "distance",
