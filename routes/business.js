@@ -3,6 +3,8 @@ const router = express();
 const businessController = require('../controller/business');
 const asyncMiddleware = require('../middleware/async');
 const validateToken = require('../middleware/validateToken');
+const validateAdmin = require('../middleware/validateAdmin');
+const adminOwnerOnly = require('../middleware/adminOwnerOnly');
 const multer = require('multer');
 const path = require('path');
 const Stripe = require('../controller/stripe')
@@ -855,11 +857,11 @@ router.post('/choosePlan', validateToken, asyncMiddleware(businessController.cho
 
 //=======================================================================================================//
 // Redundant Routes No need to use
-router.post('/SubscriptionCreate',asyncMiddleware(businessController.subscriptionCreate));
+router.post('/SubscriptionCreate',validateAdmin,adminOwnerOnly,asyncMiddleware(businessController.subscriptionCreate));
 
 router.get('/AllSubscription',asyncMiddleware(businessController.subscriptionGet));
 
-router.post('/CustomerSubscribe',asyncMiddleware(businessController.subscribeSubscription));
+router.post('/CustomerSubscribe',validateAdmin,adminOwnerOnly,asyncMiddleware(businessController.subscribeSubscription));
 
 router.post('/PaypalProduct',asyncMiddleware(businessController.paypalProductCreate));
 
@@ -867,7 +869,7 @@ router.get('/PaypalPlans',asyncMiddleware(businessController.PayPalPlanget));
 
 router.get('/PaypalPlanGet',asyncMiddleware(businessController.PayPalPlan));
 
-router.post('/PlanDeactivate',asyncMiddleware(businessController.PlanDeactivation));
+router.post('/PlanDeactivate',validateAdmin,adminOwnerOnly,asyncMiddleware(businessController.PlanDeactivation));
 
 //router.post("/SubscribePlan",validateToken,asyncMiddleware(businessController.Subscription));
 
@@ -971,7 +973,7 @@ router.get("/getCardInfo",asyncMiddleware(businessController.getCardById));
  *                   type: string
  *                   example: 'Internal server error'
  */
-router.post("/PlanCreate",asyncMiddleware(businessController.createPlanController));
+router.post("/PlanCreate",validateAdmin,adminOwnerOnly,asyncMiddleware(businessController.createPlanController));
 
 
 /**
@@ -1449,7 +1451,7 @@ router.post("/WebHooks",asyncMiddleware(businessController.WebHooks));
  *                   type: string
  *                   example: 'Internal server error'
  */
-router.post("/CancelSubscription",asyncMiddleware(businessController.subscriptionCancelsBraintree))
+router.post("/CancelSubscription",validateToken,asyncMiddleware(businessController.subscriptionCancelsBraintree))
 
 /**
  * @swagger
@@ -1633,7 +1635,7 @@ router.put("/cardUpdate",validateToken,asyncMiddleware(businessController.btcard
  *                   type: string
  *                   example: 'Internal server error'
  */
-router.delete("/paymentMethodRevoked",asyncMiddleware(businessController.PaymentRevoked))
+router.delete("/paymentMethodRevoked",validateAdmin,adminOwnerOnly,asyncMiddleware(businessController.PaymentRevoked))
 
 
 /**
@@ -1856,7 +1858,7 @@ router.get("/customerAllCards",validateToken,asyncMiddleware(businessController.
  *                   type: string
  *                   example: 'Internal server error'
  */
-router.put("/planUpdate",asyncMiddleware(businessController.planUpdate));
+router.put("/planUpdate",validateAdmin,adminOwnerOnly,asyncMiddleware(businessController.planUpdate));
 
 
 /**

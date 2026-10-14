@@ -1775,19 +1775,21 @@ async function subscriptionCancelsBraintree(req, res) {
 
   console.log("Subscription ID: ", subscriptionId);
 
-  const subscriptionCanel = await Braintree.cancelSubscription(subscriptionId);
-
+  // Only the owner of the subscription may cancel it
   const userUpdate = await userPlan.findOne({
     where: {
       subscriptionPlanID: subscriptionId,
+      userId: req.user.id,
     },
   });
 
   if (!userUpdate) {
     throw new CustomException("Invalid Subscription ID");
-  } else {
-    userUpdate.update({ subscriptionStatus: "Canceled" });
   }
+
+  const subscriptionCanel = await Braintree.cancelSubscription(subscriptionId);
+
+  await userUpdate.update({ subscriptionStatus: "Canceled" });
 
   res.json(returnFunction("1", "Subscription Cancelled "));
 }

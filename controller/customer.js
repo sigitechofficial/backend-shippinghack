@@ -124,6 +124,7 @@ const {
 } = require("../utils/localPickup");
 const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
+const { isMobileAppRequest, businessAppBlockedResponse } = require("../utils/clientApp");
 const {
   currentUnits,
   unitsFor,
@@ -2222,6 +2223,10 @@ async function signInUser(req, res) {
       ],
     ],
   });
+  // Business accounts are website-only for now: refuse them on the mobile app
+  if (userData && userData.userTypeId === 3 && isMobileAppRequest(req)) {
+    return res.json(businessAppBlockedResponse(userData.languageCheck));
+  }
   // if user not found and signedBy (google or apple) then create new account
   if (
     (!userData && signedBy === "google") ||
@@ -2713,6 +2718,15 @@ async function session(req, res) {
       "Sorry no user found!",
       "Please contact support for more information"
     );
+  }
+  // Business accounts are website-only for now: refuse them on the mobile app
+  if (isMobileAppRequest(req)) {
+    const account = await user.findByPk(userId, {
+      attributes: ["userTypeId", "languageCheck"],
+    });
+    if (account && account.userTypeId === 3) {
+      return res.json(businessAppBlockedResponse(account.languageCheck));
+    }
   }
   if (!userData?.status)
     throw new CustomException(
