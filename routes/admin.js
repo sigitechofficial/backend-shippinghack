@@ -4272,6 +4272,9 @@ router.put('/bookpickup', validateToken, checkPermission, asyncMiddleware(adminC
 // Local orders: drop-off at FedEx or FedEx pickup, and the pickup fee
 router.get('/localpickup', validateToken, checkPermission, asyncMiddleware(adminController.getLocalPickup));
 router.put('/localpickup', validateToken, checkPermission, asyncMiddleware(adminController.updateLocalPickup));
+// Order fees (processing / consolidation fee per package; International / Local switches)
+router.get('/orderfees', validateToken, checkPermission, asyncMiddleware(adminController.getOrderFees));
+router.put('/orderfees', validateToken, checkPermission, asyncMiddleware(adminController.updateOrderFees));
 //4. Get unit types addUnit
 /**
  * @swagger

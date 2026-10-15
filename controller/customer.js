@@ -126,7 +126,7 @@ const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
 const { isMobileAppRequest, businessAppBlockedResponse, businessAppSessionResponse } = require("../utils/clientApp");
 const BusinessMembership = require("../utils/businessMembership");
-const { businessOrderPrice } = require("../utils/businessPricing");
+const { orderPrice, localProcessingFee } = require("../utils/businessPricing");
 const {
   currentUnits,
   unitsFor,
@@ -3559,14 +3559,18 @@ async function createOrderLoc(req, res) {
   //   //returns a Buffer
   //   fs.writeFileSync(`Public/Barcodes/${trackingId}.png`, buffer);
   // });
-  // the admin's flat Local price for the charged weight, plus the pickup fee
+  // the admin's flat Local price for the charged weight, plus the pickup fee, plus the
+  // processing fee when the admin switched order fees on for Local orders (off now)
   const charge = box.price;
-  const orderTotal = round2(Number(charge) + Number(pickupFee));
+  const customerType = await user.findByPk(userId, { attributes: ["userTypeId"] });
+  const processingFee = await localProcessingFee(userId, customerType && customerType.userTypeId === 3);
+  const orderTotal = round2(Number(charge) + Number(pickupFee) + Number(processingFee));
   await booking.update(
     {
       trackingId,
       subTotal: orderTotal,
       total: orderTotal,
+      processingFee,
       barcode: `Public/Barcodes/${trackingId}.png`,
     },
     { where: { id: bookingData.id } }
@@ -3617,8 +3621,10 @@ async function createOrderLoc(req, res) {
     trackingId,
     total: orderTotal,
     // the price is deliveryPrice (the band) + pickupFee (FedEx pickup only)
+    // + processingFee (only when the admin turned order fees on for Local orders)
     deliveryPrice: charge,
     pickupFee,
+    processingFee,
     pickupMethod: pickupSettings.method,
     senderData: {
       senderName: bookingData.senderName,
@@ -4733,12 +4739,21 @@ async function chooseLogisticCompany(req, res) {
   const customer = await user.findByPk(customerId);
   console.log("Customer Data----------->: ", customer);
 
-  if (customer.userTypeId === 3 && bookingData.bookingTypeId === 1) {
-    // Business: the level's discount off shipping + its processing fee per package
-    const packageCount = (bookingData.packages || []).filter((p) =>
-      ["arrived", "pending"].includes(p.arrived)
-    ).length;
-    const price = await businessOrderPrice(customerId, charges, packageCount);
+  // Local orders are priced when they're created (with their own fees), not here
+  if (Number(bookingData.bookingTypeId) === 6) {
+    bookingData.subTotal = charges;
+    bookingData.total = charges;
+    await bookingData.save();
+  } else {
+    // shipping, then the business level's discount (business users) and the order fees
+    // (processing fee per package, consolidation fee per package when consolidated)
+    const isBusiness = customer.userTypeId === 3 && Number(bookingData.bookingTypeId) === 1;
+    const price = await orderPrice({
+      customerId,
+      isBusiness,
+      booking: bookingData,
+      shippingCharges: charges,
+    });
     if (!price) {
       const msg =
         "Your business membership isn't active. Please renew it on our website to continue.";
@@ -4747,15 +4762,9 @@ async function chooseLogisticCompany(req, res) {
     bookingData.subTotal = price.subTotal;
     bookingData.discount = price.discount;
     bookingData.processingFee = price.processingFee;
+    bookingData.consolidationFee = price.consolidationFee;
     bookingData.businessLevel = price.level;
     bookingData.total = price.total;
-    await bookingData.save();
-  } else {
-    bookingData.subTotal = charges;
-    bookingData.discount = 0;
-    bookingData.processingFee = 0;
-    bookingData.businessLevel = null;
-    bookingData.total = charges;
     await bookingData.save();
   }
 
@@ -4763,6 +4772,7 @@ async function chooseLogisticCompany(req, res) {
     subTotal: bookingData.subTotal,
     discount: bookingData.discount,
     serviceCharge: bookingData.processingFee,
+    packingCharge: bookingData.consolidationFee,
     total: bookingData.total,
     bookingId: bookingData.id,
   });
@@ -4891,6 +4901,7 @@ async function orderDetails(req, res) {
       "discount",
       // business orders: processing fee and the level behind the prices
       "processingFee",
+      "consolidationFee",
       "businessLevel",
       "total",
       "barcode",

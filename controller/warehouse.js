@@ -1196,6 +1196,7 @@ async function bookingDetailsById(req, res) {
         subTotal: bookingData.subTotal,
         discount: bookingData.discount,
         processingFee: bookingData.processingFee,
+        consolidationFee: bookingData.consolidationFee,
         businessLevel: bookingData.businessLevel,
       },
       bookingStatus: bookingData.bookingStatus,

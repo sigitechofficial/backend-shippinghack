@@ -96,6 +96,7 @@ const {
   MODE_KEY: LOCAL_PICKUP_MODE_KEY,
   FEE_KEY: LOCAL_PICKUP_FEE_KEY,
 } = require("../utils/localPickup");
+const { orderFeeSettings, saveOrderFeeSettings, ORDER_FEE_KEYS } = require("../utils/orderFees");
 // Calling mailer
 const nodemailer = require("nodemailer");
 const sequelize = require("sequelize");
@@ -2268,6 +2269,16 @@ async function bookPickupAdmin(req, res) {
 }
 
 // Local orders: drop-off at FedEx or FedEx pickup (+ fee), for orders made from now on
+// Order fees: processing / consolidation fee per package, on International / Local
+async function getOrderFees(req, res) {
+  return res.json(returnFunction("1", "Order fees", await orderFeeSettings(), ""));
+}
+
+async function updateOrderFees(req, res) {
+  const saved = await saveOrderFeeSettings(req.body || {});
+  return res.json(returnFunction("1", "Order fees saved", saved, ""));
+}
+
 async function getLocalPickup(req, res) {
   return res.json(returnFunction("1", "Local pickup", await localPickupSettings(), ""));
 }
@@ -2478,7 +2489,8 @@ async function deleteFAQ(req, res) {
 async function getGenCharges(req, res) {
   const charges = await generalCharges.findAll({
     // the Local pickup settings have their own card (admin/localpickup)
-    where: { key: { [Op.notIn]: [LOCAL_PICKUP_MODE_KEY, LOCAL_PICKUP_FEE_KEY] } },
+    // ...and so do the order fees (admin/orderfees)
+    where: { key: { [Op.notIn]: [LOCAL_PICKUP_MODE_KEY, LOCAL_PICKUP_FEE_KEY, ...ORDER_FEE_KEYS] } },
     attributes: ["key", "id", "information", "value"],
   });
 
@@ -7364,6 +7376,8 @@ module.exports = {
   cancelPaidOrderAdmin,
   bookPickupAdmin,
   getLocalPickup,
+  getOrderFees,
+  updateOrderFees,
   updateLocalPickup,
   // Support
   getSupport,

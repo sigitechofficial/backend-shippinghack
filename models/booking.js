@@ -85,6 +85,12 @@ module.exports = (sequelize, DataTypes) =>{
             type: DataTypes.STRING(50),
             allowNull: true,
         },
+        // consolidated orders: consolidation fee for all packages
+        consolidationFee: {
+            type: DataTypes.DECIMAL(10,2),
+            allowNull: true,
+            defaultValue: '0.00'
+        },
         total: {
             type: DataTypes.DECIMAL(10,2),
             allowNull: true,
