@@ -124,7 +124,7 @@ const {
 } = require("../utils/localPickup");
 const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
-const { isMobileAppRequest, businessAppBlockedResponse } = require("../utils/clientApp");
+const { isMobileAppRequest, businessAppBlockedResponse, businessAppSessionResponse } = require("../utils/clientApp");
 const BusinessMembership = require("../utils/businessMembership");
 const { businessOrderPrice } = require("../utils/businessPricing");
 const {
@@ -2740,7 +2740,7 @@ async function session(req, res) {
       attributes: ["userTypeId", "languageCheck"],
     });
     if (account && account.userTypeId === 3) {
-      return res.json(businessAppBlockedResponse(account.languageCheck));
+      return res.json(businessAppSessionResponse(account.languageCheck));
     }
   }
   if (!userData?.status)

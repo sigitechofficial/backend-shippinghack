@@ -26,4 +26,17 @@ function businessAppBlockedResponse(language) {
   };
 }
 
-module.exports = { isMobileAppRequest, businessAppBlockedResponse };
+// The app's session check (splash screen) only sends the user to the login screen
+// when the reply's message is "Access Denied", so a business account's saved
+// session gets exactly that; the login screen then shows the message above.
+function businessAppSessionResponse(language) {
+  const blocked = businessAppBlockedResponse(language);
+  return {
+    status: '0',
+    message: 'Access Denied',
+    data: {},
+    error: `${blocked.message} ${blocked.error}`,
+  };
+}
+
+module.exports = { isMobileAppRequest, businessAppBlockedResponse, businessAppSessionResponse };
