@@ -144,6 +144,12 @@ async function registerBusiness(req, res) {
     signedBy,
   } = req.body;
 
+  // one @, something before it, and a domain with a dot after it
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim())) {
+    const msg = "Enter a valid email address, like name@example.com.";
+    throw new CustomException(msg, msg);
+  }
+
   const userExist = await user.findOne({
     where: { email: email, deletedAt: { [Op.is]: null } },
     include: { model: otpVerification },
