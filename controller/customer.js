@@ -124,7 +124,6 @@ const {
 } = require("../utils/localPickup");
 const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
-const { isMobileAppRequest, businessAppBlockedResponse, businessAppSessionResponse } = require("../utils/clientApp");
 const BusinessMembership = require("../utils/businessMembership");
 const { orderPrice, localProcessingFee } = require("../utils/businessPricing");
 const {
@@ -2225,17 +2224,6 @@ async function signInUser(req, res) {
       ],
     ],
   });
-  // Business accounts are website-only for now: refuse them on the mobile app.
-  // Social logins have no password, so they are refused here; password logins
-  // further down, once the password is right.
-  if (
-    userData &&
-    userData.userTypeId === 3 &&
-    signedBy &&
-    isMobileAppRequest(req)
-  ) {
-    return res.json(businessAppBlockedResponse(userData.languageCheck));
-  }
   // if user not found and signedBy (google or apple) then create new account
   if (
     (!userData && signedBy === "google") ||
@@ -2514,9 +2502,6 @@ async function signInUser(req, res) {
       "Bad credentials",
       "Please enter correct password to continue"
     );
-  if (userData.userTypeId === 3 && isMobileAppRequest(req)) {
-    return res.json(businessAppBlockedResponse(userData.languageCheck));
-  }
   // add device Token if not found
   const found = userData.deviceTokens.find((ele) => ele.tokenId === dvToken);
   if (!found)
@@ -2733,15 +2718,6 @@ async function session(req, res) {
       "Sorry no user found!",
       "Please contact support for more information"
     );
-  }
-  // Business accounts are website-only for now: refuse them on the mobile app
-  if (isMobileAppRequest(req)) {
-    const account = await user.findByPk(userId, {
-      attributes: ["userTypeId", "languageCheck"],
-    });
-    if (account && account.userTypeId === 3) {
-      return res.json(businessAppSessionResponse(account.languageCheck));
-    }
   }
   if (!userData?.status)
     throw new CustomException(
