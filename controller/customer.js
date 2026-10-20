@@ -3316,6 +3316,10 @@ async function dropOfAddress(req, res) {
     selfPickup,
   } = req.body;
   const userId = req.user.id;
+  // Only create an address for a real new one: not for self pickup, and not when
+  // a saved address id was chosen (older apps also send a leftover new address)
+  const useNewAddress =
+    !!addNewAddress && !selfPickup && !(Number(dropoffAddressId) > 0) && !!dropOffAddress;
   const deliveryWarehouse = await warehouse.findOne({
     where: { located: "rico" },
     attributes: ["id", "addressDBId"],
@@ -3324,7 +3328,7 @@ async function dropOfAddress(req, res) {
   if (!selfPickup) {
     const covered = await homeDeliveryCovered(
       deliveryWarehouse,
-      addNewAddress ? dropOffAddress : null,
+      useNewAddress ? dropOffAddress : null,
       dropoffAddressId
     );
     if (!covered) {
@@ -3334,7 +3338,7 @@ async function dropOfAddress(req, res) {
     }
   }
 
-  if (addNewAddress) {
+  if (useNewAddress) {
     const dropOffAddressData = await addressDBS.create(dropOffAddress);
     dropoffAddressId = dropOffAddressData.id;
     if (dropOffAddress.save) {
@@ -3378,8 +3382,9 @@ async function dropOfAddress(req, res) {
     { where: { id: bookingId } }
   );
 
+  // The app keeps this id, so saving again (after Back) reuses the address
   return res.json(
-    returnFunction("1", "Address has been added sucessfully", {}, "")
+    returnFunction("1", "Address has been added sucessfully", { dropoffAddressId }, "")
   );
 }
 /*
