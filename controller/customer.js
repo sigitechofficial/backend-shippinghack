@@ -3313,9 +3313,25 @@ async function dropOfAddress(req, res) {
     dropoffAddressId,
     reciverdetails,
     addNewAddress,
+    editAddress,
     selfPickup,
   } = req.body;
   const userId = req.user.id;
+  // Edits to the address already chosen for this order (e.g. a typo in the title):
+  // update that address instead of saving a copy. Only this user's own address.
+  const editingAddress =
+    !!editAddress && !selfPickup && Number(dropoffAddressId) > 0 && !!dropOffAddress;
+  if (editingAddress) {
+    const ownsAddress =
+      (await userAddress.findOne({ where: { userId, addressDBId: dropoffAddressId } })) ||
+      (await booking.findOne({
+        where: { id: bookingId, customerId: userId, dropoffAddressId },
+        attributes: ["id"],
+      }));
+    if (!ownsAddress) {
+      return res.json(returnFunction("0", "", {}, "Address not found"));
+    }
+  }
   // Only create an address for a real new one: not for self pickup, and not when
   // a saved address id was chosen (older apps also send a leftover new address)
   const useNewAddress =
@@ -3328,13 +3344,23 @@ async function dropOfAddress(req, res) {
   if (!selfPickup) {
     const covered = await homeDeliveryCovered(
       deliveryWarehouse,
-      useNewAddress ? dropOffAddress : null,
+      useNewAddress || editingAddress ? dropOffAddress : null,
       dropoffAddressId
     );
     if (!covered) {
       return res.json(
         returnFunction("0", "", {}, "Sorry, we don't deliver to this address yet.")
       );
+    }
+  }
+
+  if (editingAddress) {
+    const { save, ...fields } = dropOffAddress;
+    await addressDBS.update(fields, { where: { id: dropoffAddressId } });
+    if (save) {
+      const listed = await userAddress.findOne({ where: { userId, addressDBId: dropoffAddressId } });
+      if (!listed)
+        await userAddress.create({ addressDBId: dropoffAddressId, userId, type: "dropoff" });
     }
   }
 
