@@ -4976,6 +4976,9 @@ async function orderDetails(req, res) {
       "consolidationFee",
       "businessLevel",
       "total",
+      // promo code on the order (Admin > Coupons)
+      "couponCode",
+      "couponDiscount",
       "barcode",
       "distance",
       "consolidation",
