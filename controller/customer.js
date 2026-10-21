@@ -5320,8 +5320,9 @@ async function updatePassword(req, res) {
   if (!userData)
     throw new CustomException("User not found", "Please try again later");
   const matched = await bcrypt.compare(oldPassword, userData.password);
+  // the second text is what the app / website shows
   if (!matched)
-    throw new CustomException("Incorrect password", "Please try again later");
+    throw new CustomException("Incorrect password", "Your current password is incorrect");
   let hashedPassword = await bcrypt.hash(newPassword, 10);
   userData.password = hashedPassword;
   await userData.save();
