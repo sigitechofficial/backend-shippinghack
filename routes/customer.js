@@ -2775,6 +2775,9 @@ router.post('/getLogisticCompany',  asyncMiddleware(userController.logisticCompa
 router.post('/getaddresses', validateToken, asyncMiddleware(userController.searchAddress))
 //. Check coupon validity
 router.post('/couponvalidity', validateToken, asyncMiddleware(userController.checkCouponValidity));
+//. Promo code on an order: { bookingId, code } / { bookingId } -> the order's new totals
+router.post('/applycoupon', validateToken, asyncMiddleware(userController.applyCoupon));
+router.post('/removecoupon', validateToken, asyncMiddleware(userController.removeCoupon));
 // . Reschedule pickup 
 router.post('/reschedulepickup', validateToken, asyncMiddleware(userController.reschedulePickup));
 // . Schedule Dropoff for booking 

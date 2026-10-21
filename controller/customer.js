@@ -126,6 +126,7 @@ const { recordAdminEarning, round2 } = require("../utils/ledger");
 const { anyVehicleCovers } = require("../utils/distanceBands");
 const BusinessMembership = require("../utils/businessMembership");
 const { orderPrice, localProcessingFee } = require("../utils/businessPricing");
+const { usableCoupon, preCouponTotal, setCoupon, clearCoupon, reapplyCoupon } = require("../utils/coupons");
 const {
   currentUnits,
   unitsFor,
@@ -4074,7 +4075,8 @@ async function quoteBooking(bookingData) {
   const u = await unitsFor(bookingData.appUnitId);
   if (bookingData.bookingTypeId === 6) {
     const company = await logisticCompany.findByPk(LOCAL_COMPANY_ID, { attributes: ["id", "title", "logo"] });
-    const price = Number(bookingData.total) || 0;
+    // the order's price before any promo code
+    const price = preCouponTotal(bookingData) || 0;
     const arryofCompanies = price > 0
       ? [{
           id: company?.id ?? LOCAL_COMPANY_ID,
@@ -4110,6 +4112,58 @@ async function searchAddress(req, res) {
             4. Check coupon validity(redundant)
     ________________________________________
 */
+// The booking a promo code can go on: the customer's own, not paid, with a price
+async function couponBooking(bookingId, userId) {
+  const b = await booking.findOne({ where: { id: bookingId, customerId: userId } });
+  if (!b) throw new CustomException("Order not found", "Order not found");
+  if (b.paymentConfirmed) {
+    const msg = "This order is already paid. A promo code can't be added now.";
+    throw new CustomException(msg, msg);
+  }
+  if (!(preCouponTotal(b) > 0)) {
+    const msg = "This order has no price yet. Please choose a delivery company first.";
+    throw new CustomException(msg, msg);
+  }
+  return b;
+}
+
+// What the app / website shows after a promo code change
+const couponTotals = (b) => ({
+  bookingId: b.id,
+  subTotal: b.subTotal,
+  discount: b.discount,
+  processingFee: b.processingFee,
+  consolidationFee: b.consolidationFee,
+  pickupFee: b.pickupFee,
+  couponCode: b.couponCode,
+  couponDiscount: b.couponDiscount,
+  total: b.total,
+});
+
+/*
+            Apply a promo code to an order (Admin > Coupons)
+*/
+async function applyCoupon(req, res) {
+  const { bookingId, code } = req.body;
+  const b = await couponBooking(bookingId, req.user.id);
+  const pre = preCouponTotal(b);
+  const c = await usableCoupon(code, req.user.id, pre);
+  setCoupon(b, c, pre);
+  await b.save();
+  return res.json(returnFunction("1", "Promo code applied", couponTotals(b), ""));
+}
+
+/*
+            Remove the promo code from an order
+*/
+async function removeCoupon(req, res) {
+  const { bookingId } = req.body;
+  const b = await couponBooking(bookingId, req.user.id);
+  clearCoupon(b, preCouponTotal(b));
+  await b.save();
+  return res.json(returnFunction("1", "Promo code removed", couponTotals(b), ""));
+}
+
 async function checkCouponValidity(req, res) {
   const { code } = req.body;
   const userId = req.user.id;
@@ -4758,7 +4812,8 @@ async function chooseLogisticCompany(req, res) {
   // Local orders are priced when they're created (with their own fees), not here
   if (Number(bookingData.bookingTypeId) === 6) {
     bookingData.subTotal = charges;
-    bookingData.total = charges;
+    // keep the promo code on the order (if it's still valid)
+    await reapplyCoupon(bookingData, charges);
     await bookingData.save();
   } else {
     // shipping, then the business level's discount (business users) and the order fees
@@ -4780,7 +4835,8 @@ async function chooseLogisticCompany(req, res) {
     bookingData.processingFee = price.processingFee;
     bookingData.consolidationFee = price.consolidationFee;
     bookingData.businessLevel = price.level;
-    bookingData.total = price.total;
+    // the total, less the promo code on the order (if it's still valid)
+    await reapplyCoupon(bookingData, price.total);
     await bookingData.save();
   }
 
@@ -7476,7 +7532,7 @@ async function finalizePaidBookingOnce(bookingID, amount) {
 
     bookingData.logisticCompanyTrackingNum = trackingNumber;
     bookingData.label = label;
-    bookingData.subTotal = amount;
+    if (!Number(bookingData.couponDiscount)) bookingData.subTotal = amount;
     bookingData.total = amount;
     const shippingCost = fedexShippingCost([fedexShipment.data]);
     if (shippingCost !== null) bookingData.shippingCost = shippingCost;
@@ -7737,7 +7793,7 @@ async function retrieveSession(req, res) {
 
       bookingData.logisticCompanyTrackingNum = trackingNumber;
       bookingData.label = label
-      bookingData.subTotal = amount;
+      if (!Number(bookingData.couponDiscount)) bookingData.subTotal = amount;
       bookingData.total = amount;
       bookingData.paymentConfirmed = true;
       bookingData.bookingStatusId = status.id;
@@ -8396,6 +8452,8 @@ module.exports = {
   getcharges,
   createOrderInt,
   dropOfAddress,
+  applyCoupon,
+  removeCoupon,
   createOrderLoc,
   localQuote,
   reschedulePickup,

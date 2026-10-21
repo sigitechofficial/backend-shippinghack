@@ -1614,7 +1614,13 @@ async function updateCoupon(req, res) {
   // cannot update code & type
   coupon
     .update(
-      { value, from: `${from} 05:00`, to: `${to} 04:59` },
+      {
+        value,
+        from: `${from} 05:00`,
+        to: `${to} 04:59`,
+        // the minimum order of a conditional coupon
+        ...(condAmount !== undefined ? { condAmount: condAmount === "" ? null : condAmount } : {}),
+      },
       { where: { id: couponId } }
     )
     .then((data) => {

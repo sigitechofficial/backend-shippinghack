@@ -96,6 +96,18 @@ module.exports = (sequelize, DataTypes) =>{
             allowNull: true,
             defaultValue: '0.00'
         },
+        // Promo code on the order (Admin > Coupons): the code and the amount it took
+        // off the total. Separate from `discount` (the business level's discount).
+        // couponId comes from the coupon association. SQL: seeders/2026-10-coupons.sql
+        couponCode: {
+            type: DataTypes.STRING(50),
+            allowNull: true,
+        },
+        couponDiscount: {
+            type: DataTypes.DECIMAL(10,2),
+            allowNull: false,
+            defaultValue: '0.00'
+        },
         status: {
             type: DataTypes.BOOLEAN,
             allowNull: true,
