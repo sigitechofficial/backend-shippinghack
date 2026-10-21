@@ -264,11 +264,13 @@ if (syncDb) {
 // Every 5 minutes: orders paid on Stripe whose confirmation never reached us (the
 // customer closed the website tab or the app first) are recorded as paid.
 if (process.env.DISABLE_PAYMENT_RECOVERY !== 'true') {
-  require('node-cron').schedule('*/5 * * * *', () => {
+  const recoverPayments = () =>
     require('./controller/customer')
       .recoverRecentPayments()
       .catch((err) => console.error('Payment recovery job failed:', err && err.message));
-  });
+  require('node-cron').schedule('*/5 * * * *', recoverPayments);
+  // and once a minute after start, so a restart never leaves a paid order waiting
+  setTimeout(recoverPayments, 60 * 1000);
   // FedEx-pickup Local orders FedEx said were booked too early are booked again
   require('node-cron').schedule('17 * * * *', () => {
     require('./controller/customer')

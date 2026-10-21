@@ -8059,13 +8059,19 @@ async function recoverRecentPayments() {
     order: [["id", "DESC"]],
     limit: 100,
   });
+  const recorded = [];
   for (const b of unpaid) {
     try {
-      await recoverPaidBooking(b.id);
+      if (await recoverPaidBooking(b.id)) recorded.push(b.id);
     } catch (err) {
       console.error(`recoverRecentPayments ${b.id}: ${err.message}`);
     }
   }
+  console.log(
+    `[payment-recovery] ${new Date().toISOString()} checked ${unpaid.length} unpaid order(s)` +
+      (recorded.length ? `, recorded as paid: ${recorded.join(", ")}` : "")
+  );
+  return recorded;
 }
 
 // Before any payment of a Local order with FedEx pickup: null when FedEx can still come
