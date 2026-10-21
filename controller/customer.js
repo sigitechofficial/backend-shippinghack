@@ -1540,8 +1540,16 @@ async function sendOTP(req, res) {
     if (userExist.verifiedAt !== null)
       throw new CustomException(
         "Trying to login?",
-        "A user with the follwoing email exists already"
+        "This email is already registered. Please log in."
       );
+    // never verified (the user went back from the OTP screen or closed the app):
+    // signing up again is allowed - keep the password typed now and send a new OTP
+    if (password) {
+      await user.update(
+        { password: await bcrypt.hash(password, 10), ...(languageCheck ? { languageCheck } : {}) },
+        { where: { id: userExist.id } }
+      );
+    }
     let OTP = otpGenerator.generate(4, {
       lowerCaseAlphabets: false,
       upperCaseAlphabets: false,
