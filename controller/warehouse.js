@@ -1198,6 +1198,9 @@ async function bookingDetailsById(req, res) {
         processingFee: bookingData.processingFee,
         consolidationFee: bookingData.consolidationFee,
         businessLevel: bookingData.businessLevel,
+        // promo code on the order (Admin > Coupons)
+        couponCode: bookingData.couponCode,
+        couponDiscount: bookingData.couponDiscount,
       },
       bookingStatus: bookingData.bookingStatus,
       //   vehicleType: `${bookingData.vehicleType.title}`,
