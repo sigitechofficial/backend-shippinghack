@@ -3392,7 +3392,7 @@ async function dropOfAddress(req, res) {
     );
 
     return res.json(
-      returnFunction("1", "Address has been added sucessfully", {}, "")
+      returnFunction("1", "Delivery details saved", {}, "")
     );
   }
   await booking.update(
@@ -3410,7 +3410,7 @@ async function dropOfAddress(req, res) {
 
   // The app keeps this id, so saving again (after Back) reuses the address
   return res.json(
-    returnFunction("1", "Address has been added sucessfully", { dropoffAddressId }, "")
+    returnFunction("1", "Delivery details saved", { dropoffAddressId }, "")
   );
 }
 /*
