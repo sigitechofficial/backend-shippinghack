@@ -5323,6 +5323,9 @@ async function updatePassword(req, res) {
   // the second text is what the app / website shows
   if (!matched)
     throw new CustomException("Incorrect password", "Your current password is incorrect");
+  // a "new" password equal to the current one changes nothing
+  if (await bcrypt.compare(String(newPassword || ""), userData.password))
+    throw new CustomException("Same password", "New password must be different from your current password");
   let hashedPassword = await bcrypt.hash(newPassword, 10);
   userData.password = hashedPassword;
   await userData.save();
