@@ -1,7 +1,6 @@
 require("dotenv").config();
 //importing Models
 const {
-  contactMessage,
   warehouse,
   user,
   userPlan,
@@ -2388,15 +2387,6 @@ async function updateUnitSettings(req, res) {
 /*
             1. Get support
 */
-// Contact us messages from the website, newest first
-async function getContactMessages(req, res) {
-  const rows = await contactMessage.findAll({
-    order: [["createdAt", "DESC"]],
-    limit: 300,
-  });
-  return res.json(returnFunction("1", "Contact messages", { messages: rows }, ""));
-}
-
 async function getSupport(req, res) {
   const supportData = await support.findAll({
     attributes: ["id", "title", "key", "value"],
@@ -7308,7 +7298,6 @@ function journeyTrack(deliverytype) {
 //!===============================================================================================================================================================>>
 
 module.exports = {
-  getContactMessages,
   // Auth
   signIn,
   // Customers

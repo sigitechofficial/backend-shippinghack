@@ -4763,7 +4763,6 @@ router.put('/updateunitstatus', validateToken, checkPermission, asyncMiddleware(
  *                   example: 'Internal server error'
  */
 router.get('/getsupport', validateToken, checkPermission, asyncMiddleware(adminController.getSupport));
-router.get('/contactmessages', validateToken, checkPermission, asyncMiddleware(adminController.getContactMessages));
 // 3. Update support
 
 /**

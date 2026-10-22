@@ -4678,10 +4678,6 @@ router.post('/capturepayment', validateToken, asyncMiddleware(userController.cap
  */
 
 router.post('/trackorder', asyncMiddleware(userController.bookingDetailsByTracking));
-// public: order number, status and its history only
-router.post('/trackshipment', asyncMiddleware(userController.trackShipment));
-// public: the website's Contact us form
-router.post('/contactmessage', asyncMiddleware(userController.sendContactMessage));
 // ! Module : Shopify API's
 /**
  * @swagger
