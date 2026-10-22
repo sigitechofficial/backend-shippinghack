@@ -1320,6 +1320,15 @@ async function createFedexShipmentLoc(bookingData) {
 
 //   }
 
+// FedEx refuses one-word descriptions such as "Shoes" ("vague commodity"), so the
+// item is described as "<category>: <customer's note>", e.g. "Clothes: Shoes"
+function fedexItemDescription(pkg) {
+  const note = String(pkg?.note || "").trim();
+  const categoryTitle = String(pkg?.category?.title || "").trim();
+  const text = [categoryTitle, note].filter(Boolean).join(": ") || "Personal goods";
+  return text.slice(0, 450);
+}
+
 async function createFedexShipmentInt(bookingData) {
   console.log(
     "createFedexShipmentInt function =====================>",
@@ -1419,7 +1428,7 @@ async function createFedexShipmentInt(bookingData) {
             },
             commodities: [
               {
-                description: pkg.note,
+                description: fedexItemDescription(pkg),
                 quantity: 1,
                 quantityUnits: "EA",
                 weight: {
@@ -1526,6 +1535,13 @@ async function createFedexShipmentInt(bookingData) {
 
 async function sendOTP(req, res) {
   const { email, password, signedBy, dvToken, languageCheck } = req.body;
+  // a code can't be delivered to an address like "abc"
+  if (!/^\S+@\S+\.\S+$/.test(String(email || "").trim())) {
+    throw new CustomException(
+      "Invalid email",
+      "Enter a valid email address, like name@example.com."
+    );
+  }
   const userExist = await user.findOne({
     where: { email: email, deletedAt: { [Op.is]: null } },
     include: { model: otpVerification },
@@ -3118,7 +3134,53 @@ async function getcharges(req, res) {
             4. Create Order (For international orders)
     _________________________________________
 */
+// One order at a time per customer, and the same package can't be booked twice
+// within a few minutes (a double click on "Place order")
+const orderLocks = new Map();
 async function createOrderInt(req, res) {
+  const key = String(req.user.id);
+  const previous = orderLocks.get(key) || Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => (release = resolve));
+  const chained = previous.then(() => current);
+  orderLocks.set(key, chained);
+  await previous;
+  try {
+    await refuseJustBookedPackages(req.user.id, req.body?.packages);
+    return await createOrderIntUnlocked(req, res);
+  } finally {
+    release();
+    if (orderLocks.get(key) === chained) orderLocks.delete(key);
+  }
+}
+
+async function refuseJustBookedPackages(userId, packages) {
+  const numbers = (Array.isArray(packages) ? packages : [])
+    .map((p) => String(p?.trackingNum ?? "").trim())
+    .filter(Boolean);
+  if (numbers.length === 0) return;
+  const recent = await package.findOne({
+    where: { trackingNum: { [Op.in]: numbers } },
+    include: [
+      {
+        model: booking,
+        required: true,
+        attributes: ["trackingId"],
+        where: {
+          customerId: userId,
+          bookingStatusId: { [Op.ne]: 19 },
+          createdAt: { [Op.gte]: new Date(Date.now() - 3 * 60 * 1000) },
+        },
+      },
+    ],
+  });
+  if (recent) {
+    const msg = `This package was just booked (order ${recent.booking?.trackingId || ""}). Check Expected packages.`;
+    throw new CustomException(msg, msg);
+  }
+}
+
+async function createOrderIntUnlocked(req, res) {
   const { packages, consolidate, ecommerceCompanyId } = req.body;
   const userId = req.user.id;
   let language = await findLanguage(userId);
@@ -4151,14 +4213,27 @@ const couponTotals = (b) => ({
 /*
             Apply a promo code to an order (Admin > Coupons)
 */
+// After the price changed: close payment pages opened for the old price
+async function expireCheckoutsAfterPriceChange(bookingId, userId) {
+  const customer = await user.findOne({ where: { id: userId }, attributes: ["stripeCustomerId"] });
+  if (customer?.stripeCustomerId) {
+    await expireStaleCheckoutSessions(bookingId, customer.stripeCustomerId);
+  }
+}
+
+// Runs in the order's checkout lock, so a payment page being created at the same
+// moment is finished first and then closed (it was made for the old price)
 async function applyCoupon(req, res) {
   const { bookingId, code } = req.body;
-  const b = await couponBooking(bookingId, req.user.id);
-  const pre = preCouponTotal(b);
-  const c = await usableCoupon(code, req.user.id, pre);
-  setCoupon(b, c, pre);
-  await b.save();
-  return res.json(returnFunction("1", "Promo code applied", couponTotals(b), ""));
+  return withCheckoutLock(bookingId, async () => {
+    const b = await couponBooking(bookingId, req.user.id);
+    const pre = preCouponTotal(b);
+    const c = await usableCoupon(code, req.user.id, pre);
+    setCoupon(b, c, pre);
+    await b.save();
+    await expireCheckoutsAfterPriceChange(bookingId, req.user.id);
+    return res.json(returnFunction("1", "Promo code applied", couponTotals(b), ""));
+  });
 }
 
 /*
@@ -4166,10 +4241,13 @@ async function applyCoupon(req, res) {
 */
 async function removeCoupon(req, res) {
   const { bookingId } = req.body;
-  const b = await couponBooking(bookingId, req.user.id);
-  clearCoupon(b, preCouponTotal(b));
-  await b.save();
-  return res.json(returnFunction("1", "Promo code removed", couponTotals(b), ""));
+  return withCheckoutLock(bookingId, async () => {
+    const b = await couponBooking(bookingId, req.user.id);
+    clearCoupon(b, preCouponTotal(b));
+    await b.save();
+    await expireCheckoutsAfterPriceChange(bookingId, req.user.id);
+    return res.json(returnFunction("1", "Promo code removed", couponTotals(b), ""));
+  });
 }
 
 async function checkCouponValidity(req, res) {
@@ -7309,7 +7387,37 @@ function convertToDollars(cents) {
 }
 
 //===========checkout Sessions=================//
+// One checkout at a time per order (the API runs as one process): a double click
+// waits for the first request and then reuses its session instead of making a second.
+const checkoutLocks = new Map();
+async function withCheckoutLock(bookingId, work) {
+  const key = String(bookingId);
+  const previous = checkoutLocks.get(key) || Promise.resolve();
+  let release;
+  const current = new Promise((resolve) => (release = resolve));
+  const chained = previous.then(() => current);
+  checkoutLocks.set(key, chained);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release();
+    if (checkoutLocks.get(key) === chained) checkoutLocks.delete(key);
+  }
+}
+
+// The order's price changed (promo applied/removed): sessions made for the old
+// price must not be payable any more
+async function expireStaleCheckoutSessions(bookingId, customerId) {
+  const open = await stripeFunction.openCheckoutSessionsForBooking(customerId, bookingId);
+  await Promise.all(open.map((s) => stripeFunction.expireCheckoutSession(s.id)));
+}
+
 async function checkoutSessionsCheck(req, res) {
+  return withCheckoutLock(req.body?.bookingId, () => checkoutSessionsCheckLocked(req, res));
+}
+
+async function checkoutSessionsCheckLocked(req, res) {
   const { bookingType, bookingId, successUrl, cancelUrl } = req.body;
   const UserId = req.user.id;
 
@@ -7333,6 +7441,24 @@ async function checkoutSessionsCheck(req, res) {
   const userData = await user.findOne({ where: { id: UserId } });
   await ensureStripeCustomerId(userData);
   let ammount = convertToCents(bookingData.total);
+
+  // Reuse an open session for the same price (double click, page reload);
+  // close the ones made for another price (a promo changed the total)
+  const open = await stripeFunction.openCheckoutSessionsForBooking(
+    userData.stripeCustomerId,
+    bookingId
+  );
+  const reusable = open.find(
+    (s) => s.amount_total === ammount && (!successUrl || s.success_url === successUrl)
+  );
+  await Promise.all(
+    open
+      .filter((s) => s !== reusable)
+      .map((s) => stripeFunction.expireCheckoutSession(s.id))
+  );
+  if (reusable) {
+    return res.json(returnFunction("1", "Session Created", reusable));
+  }
 
   const session = await stripeFunction.checkoutSessions(
     ammount,
@@ -7482,6 +7608,8 @@ async function finalizePaidBookingOnce(bookingID, amount) {
             "categoryId",
           ],
         },
+        // the category is part of the FedEx item description
+        include: [{ model: category, attributes: ["title"] }],
       },
     ],
   });

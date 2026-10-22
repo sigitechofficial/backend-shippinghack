@@ -584,6 +584,34 @@ async function checkoutSessions(amount, userId, bookingType,bookingId,successUrl
 }
 
 
+// Open (not yet paid or expired) Checkout sessions of this customer for one order
+async function openCheckoutSessionsForBooking(customerId, bookingId) {
+  if (!customerId) return [];
+  try {
+    const list = await stripe.checkout.sessions.list({
+      customer: customerId,
+      status: "open",
+      limit: 100,
+    });
+    return list.data.filter(
+      (session) => String(session?.metadata?.bookingId) === String(bookingId)
+    );
+  } catch (error) {
+    console.error("openCheckoutSessionsForBooking failed:", error?.message);
+    return [];
+  }
+}
+
+// An open session can't be paid any more after this
+async function expireCheckoutSession(sessionId) {
+  try {
+    await stripe.checkout.sessions.expire(sessionId);
+  } catch (error) {
+    // already completed or expired: nothing to do
+    console.error("expireCheckoutSession failed:", sessionId, error?.message);
+  }
+}
+
 //retrive checkout Session
 
 async function retrieveCheckoutSession(sessionId) {
@@ -650,6 +678,8 @@ module.exports = {
   subscriptionsRetrieve,
   //===========Checkout Sessions
   checkoutSessions,
+  openCheckoutSessionsForBooking,
+  expireCheckoutSession,
   retrieveCheckoutSession,
   retriveIntent
 };
