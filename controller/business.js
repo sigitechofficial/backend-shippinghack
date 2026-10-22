@@ -183,6 +183,14 @@ async function registerBusiness(req, res) {
   }
 
   if (userExist) {
+    // Not verified yet: this sign-up replaces the earlier one, so the new password
+    // and details are the ones that count (like the customer sign-up)
+    const update = { password: await bcrypt.hash(password, 10) };
+    if (firstName) update.firstName = firstName;
+    if (lastName) update.lastName = lastName;
+    if (businessName) update.businessName = businessName;
+    if (referral !== undefined) update.referral = referral;
+    await user.update(update, { where: { id: userExist.id } });
 
     const OTP = otpGenerator.generate(4, {
       lowerCaseAlphabets: false,
@@ -492,6 +500,14 @@ async function signInUser(req, res) {
     );
   }
 
+  // password first, so a wrong password can't open the code step
+  if (!(await bcrypt.compare(password || "", userData.password || ""))) {
+    throw new CustomException(
+      "Bad credentials",
+      "Please enter correct password to continue"
+    );
+  }
+
   // Checking the email verification
   if (!userData.verifiedAt) {
     const OTP = otpGenerator.generate(4, {
@@ -520,19 +536,24 @@ async function signInUser(req, res) {
 
     const html = registerUserEmail(emailData);
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_USERNAME,
-      to: [email, "sigidevelopers@gmail.com"],
-      subject: `Verification code for The Shipping Hack is`,
-      html,
-      attachments: [
-        {
-          filename: "logo.png",
-          path: __dirname + "/logo.png",
-          cid: "logoImage",
-        },
-      ],
-    });
+    // a mail problem must not hide the code step (the customer can press Resend)
+    try {
+      await transporter.sendMail({
+        from: process.env.EMAIL_USERNAME,
+        to: [userData.email, "sigidevelopers@gmail.com"],
+        subject: `Verification code for The Shipping Hack is`,
+        html,
+        attachments: [
+          {
+            filename: "logo.png",
+            path: __dirname + "/logo.png",
+            cid: "logoImage",
+          },
+        ],
+      });
+    } catch (error) {
+      console.error("business login: verification email not sent:", error?.message);
+    }
 
     return res.json(
       returnFunction(

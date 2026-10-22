@@ -3738,7 +3738,37 @@ async function createOrderLoc(req, res) {
     pickupEndTime: pickupChoice.pickupEndTime,
     barCode: `Public/Barcodes/${trackingId}.png`,
   };
+  // The customer went back from the review page and continued again: the new order
+  // replaces the earlier unpaid one, so it doesn't stay as a duplicate
+  await replaceUnpaidLocalOrder(req.body?.replacesBookingId, req.user.id);
   return res.json(returnFunction("1", "Booking created", outObj, ""));
+}
+
+// Cancels an unpaid Local order of this customer (and closes its payment page).
+// Paid, cancelled or other customers' orders are left alone.
+async function replaceUnpaidLocalOrder(bookingId, userId) {
+  if (!bookingId) return;
+  const old = await booking.findOne({
+    where: { id: bookingId, customerId: userId, bookingTypeId: 6 },
+    attributes: ["id", "bookingStatusId", "paymentConfirmed"],
+  });
+  if (!old || old.paymentConfirmed || old.bookingStatusId === 19) return;
+  if (await recoverPaidBooking(old.id)) return;
+  await cancelledBooking.create({
+    bookingId: old.id,
+    userId,
+    reasonId: null,
+    reasontext: "Replaced by a new order",
+  });
+  await booking.update({ status: true, bookingStatusId: 19 }, { where: { id: old.id } });
+  const time = getDateAndTime();
+  await bookingHistory.create({
+    date: time.currentDate,
+    time: time.currentTime,
+    bookingId: old.id,
+    bookingStatusId: 19,
+  });
+  await expireCheckoutsAfterPriceChange(old.id, userId);
 }
 
 // A Local order's box and price, in base units. The customer picks a weight band and a
