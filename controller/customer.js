@@ -2,6 +2,7 @@ require("dotenv").config();
 //importing Models
 const {
   user,
+  contactMessage,
   otpVerification,
   deviceToken,
   banner,
@@ -6393,6 +6394,117 @@ async function capturePayment(req, res) {
 /*
         1. Get booking details by tracking Id
 */
+// Contact us form (public): keeps the message for the admin and emails it to support.
+// A mail problem doesn't lose the message (it stays in admin > Contact messages).
+const contactSends = new Map(); // ip → recent send times (spam guard)
+async function sendContactMessage(req, res) {
+  const ip = String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim();
+  const now = Date.now();
+  const recent = (contactSends.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
+  if (recent.length >= 5) {
+    const msg = "You've sent several messages already. Please wait a few minutes and try again.";
+    throw new CustomException(msg, msg);
+  }
+  contactSends.set(ip, [...recent, now]);
+  const clean = (v, max) => String(v ?? "").trim().slice(0, max);
+  const name = clean(req.body?.name, 120);
+  const email = clean(req.body?.email, 190);
+  const subject = clean(req.body?.subject, 120);
+  const message = clean(req.body?.message, 5000);
+  const fail = (msg) => {
+    throw new CustomException(msg, msg);
+  };
+  if (!name) fail("Enter your name.");
+  if (!/^\S+@\S+\.\S+$/.test(email)) fail("Enter a valid email address, like name@example.com.");
+  if (!subject) fail("Choose a subject.");
+  if (!message) fail("Tell us how we can help.");
+
+  const saved = await contactMessage.create({ name, email, subject, message });
+
+  const supportRow = await support.findOne({ where: { key: "support_email" } });
+  const to = supportRow?.value || process.env.SUPPORT_EMAIL || "support@theshippinghack.com";
+  const escape = (v) =>
+    v.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  try {
+    await transporter.sendMail({
+      from: process.env.EMAIL_USERNAME,
+      to,
+      replyTo: email,
+      subject: `Contact us: ${subject} (from ${name})`,
+      html: `<p><strong>${escape(name)}</strong> &lt;${escape(email)}&gt; wrote:</p><p>${escape(message).replace(/\n/g, "<br>")}</p>`,
+    });
+    await saved.update({ emailedAt: new Date() });
+  } catch (error) {
+    console.error("contact message not emailed (kept in admin):", error?.message);
+  }
+  return res.json(
+    returnFunction("1", "Thanks! Your message has been sent. We'll reply within one business day.", { id: saved.id }, "")
+  );
+}
+
+// Public "Track shipment": only the order number, type, current status and its
+// history (no names, emails, phones or addresses). Finds an order by its
+// Shipping Hack number or a carrier tracking number of the order or a package.
+async function trackShipment(req, res) {
+  const number = String(req.body?.number || "").trim();
+  if (!number) {
+    return res.json(returnFunction("0", "", {}, "Enter a tracking or order number."));
+  }
+  let found = await booking.findOne({
+    where: { trackingId: number },
+    attributes: ["id"],
+  });
+  if (!found) {
+    const pkg = await package.findOne({
+      where: {
+        [Op.or]: [
+          { logisticCompanyTrackingNum: number },
+          { trackingNum: number },
+        ],
+      },
+      attributes: ["bookingId"],
+    });
+    if (pkg) found = { id: pkg.bookingId };
+  }
+  if (!found) {
+    const byCarrier = await booking.findOne({
+      where: { logisticCompanyTrackingNum: { [Op.like]: `%${number.replace(/[%_]/g, "")}%` } },
+      attributes: ["id"],
+    });
+    if (byCarrier && number.length >= 8) found = byCarrier;
+  }
+  if (!found) {
+    return res.json(
+      returnFunction("0", "", {}, "We couldn't find a shipment with that number. Check it and try again.")
+    );
+  }
+  const order = await booking.findOne({
+    where: { id: found.id },
+    attributes: ["trackingId", "bookingTypeId", "createdAt"],
+    include: [
+      { model: bookingStatus, attributes: ["title"] },
+      {
+        model: bookingHistory,
+        attributes: ["date", "time", "createdAt"],
+        include: { model: bookingStatus, attributes: ["title"] },
+      },
+    ],
+    order: [[bookingHistory, "createdAt", "ASC"]],
+  });
+  return res.json(
+    returnFunction("1", "Shipment status", {
+      trackingId: order.trackingId,
+      type: Number(order.bookingTypeId) === 6 ? "Local" : "International",
+      status: order.bookingStatus?.title || "",
+      history: (order.bookingHistories || []).map((h) => ({
+        status: h.bookingStatus?.title || "",
+        date: h.date,
+        time: h.time,
+      })),
+    }, "")
+  );
+}
+
 async function bookingDetailsByTracking(req, res) {
   const { trackingId } = req.body;
   // const defaultDistanceUnit = await defaultUnit.findOne({
@@ -8679,6 +8791,8 @@ module.exports = {
   // TrackingId
   downloadLabel,
   bookingDetailsByTracking,
+  trackShipment,
+  sendContactMessage,
   //downloadLabelDEMO
   checkoutSessionsCheck,
   registerUserMobile,
