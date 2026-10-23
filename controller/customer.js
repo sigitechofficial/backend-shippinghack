@@ -3940,8 +3940,14 @@ async function cancelBooking(req, res) {
     return res.json(returnFunction("0", "", {}, "Order not found"));
   }
   // Paid orders can't be cancelled (refunds are handled separately), including one
-  // paid on Stripe whose confirmation never arrived.
+  // paid on Stripe whose confirmation never arrived. A paid Local order that FedEx
+  // doesn't have yet is the exception: it is cancelled and refunded minus the fee.
   if (bookingData.paymentConfirmed || (await recoverPaidBooking(bookingData.id))) {
+    const paidLocal = await booking.findByPk(bookingData.id, { attributes: ["bookingTypeId", "bookingStatusId"] });
+    if (paidLocal?.bookingTypeId === 6 && Number(paidLocal.bookingStatusId) === 10) {
+      const result = await customerCancelPaidLocal(bookingData.id, req.user.id, reasonId, reasonText);
+      return res.json(returnFunction(result.ok ? "1" : "0", result.ok ? result.message : "", {}, result.ok ? "" : result.message));
+    }
     return res.json(
       returnFunction("0", "", {}, "This order has been paid and can no longer be cancelled.")
     );
@@ -5385,6 +5391,8 @@ async function orderDetails(req, res) {
   ).toFixed(2);
 
   let outObj = { ...bookingData.dataValues, packages: convertedPackages };
+  // paid Local orders: whether the customer can still cancel, the fee and the refund
+  if (isLocal) Object.assign(outObj, localCancelInfo(bookingData));
   // console.log("OBJ---------------------------------->>>>>>",outObj)
   return res.json(returnFunction("1", `Booking Details`, outObj, ""));
 }
@@ -7050,10 +7058,13 @@ async function downloadLabel(req, res) {
   }
   const orders = await booking.findOne({
     where: { id: bookingId, customerId: req.user.id },
-    attributes: ["id", "label"],
+    attributes: ["id", "label", "bookingStatusId"],
   });
   if (!orders) {
     return res.json(returnFunction("0", "", {}, "Order not found"));
+  }
+  if (Number(orders.bookingStatusId) === 19) {
+    return res.json(returnFunction("0", "", {}, "This order is cancelled, so its label is void."));
   }
   // Url keeps the stored shape (the customer app reads it as a string for local
   // orders); labels is always an array of { label }, empty until the label exists.
@@ -8523,6 +8534,191 @@ async function cancelPaidOrder(bookingId, reason) {
   }
   const shipments = voided.length ? ` FedEx shipment${voided.length > 1 ? "s" : ""} ${voided.join(", ")} voided.` : "";
   return { ok: true, message: `Order cancelled and $${refundAmount.toFixed(2)} refunded.${shipments}${pickupNote}` };
+}
+
+// Customer cancelling a paid Local order: kept from the refund
+const LOCAL_CANCEL_FEE = 3;
+
+// Whether the customer can still cancel a paid Local order, and the money: drop-off
+// orders until FedEx has the box (the void decides), FedEx-pickup orders until the
+// day before the pickup (Puerto Rico time), so the courier is never already on the way.
+function localCancelInfo(b) {
+  const total = Number(b.total) || 0;
+  const fee = Math.min(LOCAL_CANCEL_FEE, total);
+  const beforePickupDay =
+    b.pickupMethod !== "pickup" || (!!b.pickupDate && prNow().date < String(b.pickupDate).slice(0, 10));
+  return {
+    canCancel:
+      b.bookingTypeId === 6 && !!b.paymentConfirmed && Number(b.bookingStatusId) === 10 && beforePickupDay,
+    cancelFee: fee.toFixed(2),
+    refundAmount: round2(total - fee).toFixed(2),
+  };
+}
+
+// FedEx tracking codes that still mean "label made, FedEx doesn't have the box"
+const LABEL_ONLY_CODES = ["OC"];
+
+// The customer cancels their paid Local order (Ready to Ship). Nothing is refunded
+// unless FedEx has cancelled everything first: the pickup (before the label, so a
+// courier never comes for a voided label), then the label(s). The admin's
+// cancelPaidOrder is separate and still refunds in full.
+async function customerCancelPaidLocal(bookingId, userId, reasonId, reasonText) {
+  return withCheckoutLock(bookingId, async () => {
+    const b = await booking.findOne({
+      where: { id: bookingId, customerId: userId },
+      include: [{ model: package, attributes: ["id", "logisticCompanyTrackingNum"] }],
+      attributes: [
+        "id", "paymentConfirmed", "bookingStatusId", "bookingTypeId", "customerId", "captureId", "total",
+        "pickupMethod", "pickupConfirmation", "pickupDate", "pickupLocation",
+      ],
+    });
+    if (!b) return { ok: false, message: "Order not found" };
+    const info = localCancelInfo(b);
+    if (!info.canCancel) {
+      return {
+        ok: false,
+        message:
+          b.pickupMethod === "pickup" && Number(b.bookingStatusId) === 10
+            ? "FedEx pickup is today or has passed, so this order can no longer be cancelled here. Please contact support."
+            : "This order can no longer be cancelled.",
+      };
+    }
+
+    // 1. the Stripe payment and what is left to refund
+    let intentId = String(b.captureId || "");
+    if (!intentId.startsWith("pi_")) {
+      const found = await findSucceededPayment(b.id).catch(() => null);
+      intentId = found ? found.id : "";
+    }
+    if (!intentId) {
+      console.error(`customerCancelPaidLocal ${b.id}: Stripe payment not found`);
+      return { ok: false, message: "We couldn't find the payment for this order. Please contact support." };
+    }
+    const intent = await stripe.paymentIntents.retrieve(intentId);
+    const refunded = await stripe.refunds.list({ payment_intent: intentId, limit: 100 });
+    const alreadyRefunded = (refunded.data || [])
+      .filter((r) => r.status !== "failed" && r.status !== "canceled")
+      .reduce((sum, r) => sum + r.amount, 0);
+    const leftCents = Number(intent.amount_received || 0) - alreadyRefunded;
+    if (alreadyRefunded > 0) {
+      return { ok: false, message: "This order has already been refunded. Please contact support." };
+    }
+    const toRefund = Math.max(0, Math.min(leftCents, Number(convertToCents(info.refundAmount))));
+
+    const trackingNumbers = [
+      ...new Set(
+        (b.packages || [])
+          .map((p) => String(p.logisticCompanyTrackingNum || "").replace(/"/g, "").trim())
+          .filter(Boolean)
+      ),
+    ];
+
+    // 2. drop-off: FedEx must not have the box yet (no reply = unknown; the void decides)
+    if (b.pickupMethod !== "pickup") {
+      for (const t of trackingNumbers) {
+        const out = await fedex.trackFedExPackage(t);
+        const code = out?.completeTrackResults?.[0]?.trackResults?.[0]?.latestStatusDetail?.code;
+        if (code && !LABEL_ONLY_CODES.includes(code)) {
+          return { ok: false, message: "Your parcel is already with FedEx, so it can't be cancelled. Please contact support." };
+        }
+      }
+    }
+
+    // 3. the FedEx pickup first
+    if (b.pickupConfirmation) {
+      try {
+        await fedex.cancelPickup({
+          code: b.pickupConfirmation,
+          date: String(b.pickupDate || "").slice(0, 10),
+          location: b.pickupLocation,
+          remarks: "Order cancelled by customer",
+        });
+      } catch (err) {
+        console.error(`customerCancelPaidLocal ${b.id}: FedEx pickup ${b.pickupConfirmation} not cancelled: ${err.message}`);
+        return { ok: false, message: "FedEx couldn't cancel the pickup, so the order wasn't cancelled. Please contact support." };
+      }
+    }
+
+    // 4. void the label(s)
+    for (const t of trackingNumbers) {
+      try {
+        await fedex.cancelFedexShipment(t);
+      } catch (err) {
+        console.error(
+          `customerCancelPaidLocal ${b.id}: FedEx shipment ${t} not voided: ${err.message}` +
+            (b.pickupConfirmation ? ` (pickup ${b.pickupConfirmation} was already cancelled)` : "")
+        );
+        return { ok: false, message: "FedEx couldn't cancel the shipment, so the order wasn't cancelled. Please contact support." };
+      }
+    }
+
+    // 5. the refund, minus the fee (one refund per order even if this runs twice)
+    let refundAmount = 0;
+    if (toRefund > 0) {
+      try {
+        const refund = await stripe.refunds.create(
+          {
+            payment_intent: intentId,
+            amount: toRefund,
+            reason: "requested_by_customer",
+            metadata: { bookingId: String(b.id), cancelFee: info.cancelFee },
+          },
+          { idempotencyKey: `cancel-refund-${b.id}` }
+        );
+        refundAmount = Number(convertToDollars(refund.amount));
+      } catch (err) {
+        // FedEx is already cancelled: the order stays Ready to Ship for the admin to
+        // refund in Stripe
+        console.error(`customerCancelPaidLocal ${b.id}: REFUND FAILED after FedEx was cancelled: ${err.message}`);
+        return { ok: false, message: "FedEx was cancelled but the refund didn't go through. Please contact support." };
+      }
+    }
+
+    // 6. the order and the ledger (paymentConfirmed and the label stay, so nothing pays
+    // or labels this order again)
+    const time = getDateAndTime();
+    await booking.update({ bookingStatusId: 19 }, { where: { id: b.id } });
+    await bookingHistory.create({ date: time.currentDate, time: time.currentTime, bookingId: b.id, bookingStatusId: 19 });
+    await cancelledBooking.create({
+      bookingId: b.id,
+      userId: b.customerId,
+      reasonId: reasonId || null,
+      reasontext: String(reasonText || "").trim() || "Cancelled by customer",
+    });
+    if (refundAmount > 0) {
+      await wallet.create({ amount: -refundAmount, bookingId: b.id, userId: b.customerId, description: "Refund" });
+    }
+    const adminEarning = await wallet.findOne({ where: { bookingId: b.id, description: "Admin Earning" } });
+    if (adminEarning) {
+      const others = await wallet.sum("amount", { where: { bookingId: b.id, description: { [Op.ne]: "Admin Earning" } } });
+      await adminEarning.update({ amount: round2(-(others || 0)) });
+    }
+
+    // 7. a pickup booked meanwhile by the waiting-pickups job is cancelled too
+    if (!b.pickupConfirmation && b.pickupMethod === "pickup") {
+      const after = await booking.findByPk(b.id, { attributes: ["pickupConfirmation", "pickupDate", "pickupLocation"] });
+      if (after?.pickupConfirmation) {
+        await fedex
+          .cancelPickup({
+            code: after.pickupConfirmation,
+            date: String(after.pickupDate || "").slice(0, 10),
+            location: after.pickupLocation,
+            remarks: "Order cancelled by customer",
+          })
+          .catch((err) =>
+            console.error(`customerCancelPaidLocal ${b.id}: late pickup ${after.pickupConfirmation} not cancelled: ${err.message}`)
+          );
+      }
+    }
+
+    return {
+      ok: true,
+      message:
+        refundAmount > 0
+          ? `Order cancelled. $${refundAmount.toFixed(2)} will be refunded to your card (a $${info.cancelFee} cancellation fee was kept).`
+          : "Order cancelled.",
+    };
+  });
 }
 
 //==================================Track Fedex Order===========================================================//
