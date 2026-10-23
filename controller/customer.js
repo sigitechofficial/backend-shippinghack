@@ -3939,6 +3939,11 @@ async function cancelBooking(req, res) {
   if (!bookingData) {
     return res.json(returnFunction("0", "", {}, "Order not found"));
   }
+  const reasonGiven =
+    Number(reasonId) > 0 || (String(reasonText || "").trim() !== "" && String(reasonText).trim() !== "Select reason");
+  if (!reasonGiven) {
+    return res.json(returnFunction("0", "", {}, "Please select a reason for cancelling."));
+  }
   // Paid orders can't be cancelled (refunds are handled separately), including one
   // paid on Stripe whose confirmation never arrived. A paid Local order that FedEx
   // doesn't have yet is the exception: it is cancelled and refunded minus the fee.
@@ -8713,10 +8718,8 @@ async function customerCancelPaidLocal(bookingId, userId, reasonId, reasonText) 
 
     return {
       ok: true,
-      message:
-        refundAmount > 0
-          ? `Order cancelled. $${refundAmount.toFixed(2)} will be refunded to your card (a $${info.cancelFee} cancellation fee was kept).`
-          : "Order cancelled.",
+      // fixed texts: the app translates them (the amounts were shown before cancelling)
+      message: refundAmount > 0 ? "Order cancelled. Your refund is on its way to your card." : "Order cancelled.",
     };
   });
 }
