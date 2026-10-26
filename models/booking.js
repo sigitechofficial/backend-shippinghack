@@ -242,6 +242,12 @@ module.exports = (sequelize, DataTypes) =>{
             type:DataTypes.DECIMAL(10,2),
             allowNull:true,
         },
+        // Local orders: kept from the refund if the customer cancels after paying (the
+        // admin's fee when the order was made; null on older orders = $3)
+        cancelFee:{
+            type:DataTypes.DECIMAL(10,2),
+            allowNull:true,
+        },
         pickupConfirmation:{
             type:DataTypes.STRING(50),
             allowNull:true,

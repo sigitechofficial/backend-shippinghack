@@ -4,13 +4,17 @@
 //               window the customer chose; the admin's pickup fee is added to the price
 // Stored as two general charges: localPickupMode (0 = drop-off, 1 = pickup) and
 // localPickupFee ($). Each order keeps its own method, so switching never changes an
-// order that already exists.
+// order that already exists. localCancelFee ($) is kept from the refund when the customer
+// cancels a paid Local order; each order keeps the fee it was made with.
 const { generalCharges } = require("../models");
 const CustomException = require("../middleware/errorObject");
 const fedex = require("../controller/fedex");
 
 const MODE_KEY = "localPickupMode";
 const FEE_KEY = "localPickupFee";
+const CANCEL_FEE_KEY = "localCancelFee";
+// until the admin sets one
+const DEFAULT_CANCEL_FEE = 3;
 
 // FedEx refuses a Puerto Rico pickup whose close time is before 16:00
 // (ORIGINDETAIL.COMPANYCLOSETIME.INVALIDFORPUERTORICO)
@@ -27,14 +31,22 @@ function isPuertoRicoZip(postalCode) {
 }
 
 async function localPickupSettings() {
-  const rows = await generalCharges.findAll({ where: { key: [MODE_KEY, FEE_KEY] }, attributes: ["key", "value"] });
+  const rows = await generalCharges.findAll({
+    where: { key: [MODE_KEY, FEE_KEY, CANCEL_FEE_KEY] },
+    attributes: ["key", "value"],
+  });
   const value = (k) => rows.find((r) => r.key === k)?.value;
   const method = Number(value(MODE_KEY)) === 1 ? "pickup" : "dropoff";
   const fee = Math.max(0, round2(Number(value(FEE_KEY)) || 0));
-  return { method, fee };
+  const savedCancelFee = value(CANCEL_FEE_KEY);
+  const cancelFee =
+    savedCancelFee === undefined || savedCancelFee === null
+      ? DEFAULT_CANCEL_FEE
+      : Math.max(0, round2(Number(savedCancelFee) || 0));
+  return { method, fee, cancelFee };
 }
 
-async function saveLocalPickupSettings({ method, fee }) {
+async function saveLocalPickupSettings({ method, fee, cancelFee }) {
   const fail = (msg) => {
     throw new CustomException(msg, msg);
   };
@@ -42,6 +54,10 @@ async function saveLocalPickupSettings({ method, fee }) {
   const f = Number(fee === "" || fee === undefined || fee === null ? 0 : fee);
   if (!Number.isFinite(f) || f < 0) fail("The pickup fee must be 0 or more.");
   if (f > 1000) fail("The pickup fee looks too high.");
+  // left out: the cancellation fee stays as it is
+  const cf = cancelFee === "" || cancelFee === undefined || cancelFee === null ? null : Number(cancelFee);
+  if (cf !== null && (!Number.isFinite(cf) || cf < 0)) fail("The cancellation fee must be 0 or more.");
+  if (cf !== null && cf > 1000) fail("The cancellation fee looks too high.");
   const save = async (key, value, information) => {
     const row = await generalCharges.findOne({ where: { key } });
     if (row) await row.update({ value });
@@ -49,6 +65,9 @@ async function saveLocalPickupSettings({ method, fee }) {
   };
   await save(MODE_KEY, method === "pickup" ? 1 : 0, "Local orders: 0 = drop-off at FedEx, 1 = FedEx pickup");
   await save(FEE_KEY, round2(f), "Local orders: FedEx pickup fee ($)");
+  if (cf !== null) {
+    await save(CANCEL_FEE_KEY, round2(cf), "Local orders: fee kept when the customer cancels a paid order ($)");
+  }
   return localPickupSettings();
 }
 

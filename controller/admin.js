@@ -2290,7 +2290,11 @@ async function getLocalPickup(req, res) {
 }
 
 async function updateLocalPickup(req, res) {
-  const saved = await saveLocalPickupSettings({ method: req.body.method, fee: req.body.fee });
+  const saved = await saveLocalPickupSettings({
+    method: req.body.method,
+    fee: req.body.fee,
+    cancelFee: req.body.cancelFee,
+  });
   const msg = saved.method === "pickup" ? "New Local orders: FedEx picks up" : "New Local orders: drop-off at FedEx";
   return res.json(returnFunction("1", msg, saved, ""));
 }

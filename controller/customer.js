@@ -3603,6 +3603,7 @@ async function createOrderLoc(req, res) {
     pickupEndTime: pickupChoice.pickupEndTime,
     pickupMethod: pickupSettings.method,
     pickupFee: isPickup ? pickupFee : null,
+    cancelFee: pickupSettings.cancelFee,
     receiverName,
     receiverEmail,
     receiverPhone,
@@ -3713,6 +3714,8 @@ async function createOrderLoc(req, res) {
     pickupFee,
     processingFee,
     pickupMethod: pickupSettings.method,
+    // kept from the refund if the customer cancels after paying
+    cancelFee: pickupSettings.cancelFee,
     senderData: {
       senderName: bookingData.senderName,
       senderEmail: bookingData.senderEmail,
@@ -5123,6 +5126,7 @@ async function orderDetails(req, res) {
       // Local orders: 'dropoff' (to FedEx) or 'pickup' (FedEx comes on the day/window)
       "pickupMethod",
       "pickupFee",
+      "cancelFee",
       "pickupDate",
       "pickupStartTime",
       "pickupEndTime",
@@ -8541,7 +8545,8 @@ async function cancelPaidOrder(bookingId, reason) {
   return { ok: true, message: `Order cancelled and $${refundAmount.toFixed(2)} refunded.${shipments}${pickupNote}` };
 }
 
-// Customer cancelling a paid Local order: kept from the refund
+// Customer cancelling a paid Local order: kept from the refund (orders made before the
+// admin setting have no fee saved and keep $3)
 const LOCAL_CANCEL_FEE = 3;
 
 // Whether the customer can still cancel a paid Local order, and the money: drop-off
@@ -8549,7 +8554,8 @@ const LOCAL_CANCEL_FEE = 3;
 // day before the pickup (Puerto Rico time), so the courier is never already on the way.
 function localCancelInfo(b) {
   const total = Number(b.total) || 0;
-  const fee = Math.min(LOCAL_CANCEL_FEE, total);
+  const orderFee = b.cancelFee === null || b.cancelFee === undefined ? LOCAL_CANCEL_FEE : Number(b.cancelFee) || 0;
+  const fee = Math.min(Math.max(0, orderFee), total);
   const beforePickupDay =
     b.pickupMethod !== "pickup" || (!!b.pickupDate && prNow().date < String(b.pickupDate).slice(0, 10));
   return {
@@ -8574,7 +8580,7 @@ async function customerCancelPaidLocal(bookingId, userId, reasonId, reasonText) 
       include: [{ model: package, attributes: ["id", "logisticCompanyTrackingNum"] }],
       attributes: [
         "id", "paymentConfirmed", "bookingStatusId", "bookingTypeId", "customerId", "captureId", "total",
-        "pickupMethod", "pickupConfirmation", "pickupDate", "pickupLocation",
+        "pickupMethod", "pickupConfirmation", "pickupDate", "pickupLocation", "cancelFee",
       ],
     });
     if (!b) return { ok: false, message: "Order not found" };
