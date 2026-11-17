@@ -15,7 +15,7 @@ module.exports = function (email,name,orderNumber,packeges,company,consolidation
   const destination = `${address.streetAddress}, ${address.city}, ${address.province}, ${address.country}`;
   transporter.sendMail(
         {
-            from: process.env.EMAIL_USERNAME, // sender address
+            from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
             to: email, // list of receivers
             subject: `Your order #${orderNumber} has been successfully delivered.`, // Subject line
             // text: `Your OTP for Pacifrica Express is ${otp}`, // plain text body

@@ -20,7 +20,7 @@ module.exports = function (
   const a = attachments(orderNumber);
   transporter.sendMail(
     {
-      from: process.env.EMAIL_USERNAME, // sender address
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
       to: email, // list of receivers
       subject: `PACIFRICA EXPRESS ORDER CREATED MAIL`, // Subject line
       // text: `Your OTP for Pacifrica Express is ${otp}`, // plain text body

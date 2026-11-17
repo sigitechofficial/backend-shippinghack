@@ -186,7 +186,7 @@ async function sendOTP(req, res) {
       let html = registerUserEmail(emailData);
       transporter.sendMail(
         {
-          from: process.env.EMAIL_USERNAME, // sender address
+          from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
           to: [email, "sigidevelopers@gmail.com"], // list of receivers
           subject: `Verification code for The Shipping Hack is`, // Subject line
           html,
@@ -281,7 +281,7 @@ async function sendOTP(req, res) {
       let html = registerUserEmail(emailData);
       transporter.sendMail(
         {
-          from: process.env.EMAIL_USERNAME, // sender address
+          from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
           to: [email, "sigidevelopers@gmail.com"], // list of receivers
           subject: `Verification code for The Shipping Hack is`, // Subject line
           //text: `Your OTP is ${OTP}`, // plain text body
@@ -789,7 +789,7 @@ async function resendOTP(req, res) {
   let html = registerUserEmail(emailData);
   transporter.sendMail(
     {
-      from: process.env.EMAIL_USERNAME, // sender address
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
       to: [userExist.email, "sigidevelopers@gmail.com"], // list of receivers
       subject: `Verification code for The Shipping Hack is`, // Subject line
       //text: `Your OTP is ${OTP}`, // plain text body
@@ -889,7 +889,7 @@ async function forgetPasswordRequest(req, res) {
   let html = forgetUserEmail(emailData);
   transporter.sendMail(
     {
-      from: process.env.EMAIL_USERNAME, // sender address
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
       to: [email, "sigidevelopers@gmail.com"], // list of receivers
       subject: `Verification code for The Shipping Hack is`, // Subject line
       //text: `Your OTP is ${OTP}`, // plain text body

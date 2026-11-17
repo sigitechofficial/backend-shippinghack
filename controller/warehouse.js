@@ -490,7 +490,7 @@ async function sendOTP(req, res) {
   const OTPexpiryAt = OTPreqAt + 60000 * 30;
 
   await transporter.sendMail({
-    from: process.env.EMAIL_USERNAME,
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME,
     to: email,
     subject: "Verification code for Truck Express",
     html: registerUserEmail({ name: email, OTP }),
@@ -2026,7 +2026,7 @@ async function receivedAtWarehouse(req, res) {
         // send email to receiver
         transporter.sendMail(
           {
-            from: process.env.EMAIL_USERNAME, // sender address
+            from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
             to: ["sigidevelopers@gmail.com", bookingData.receiverEmail], // list of receivers
             subject: `please pick up booking from warehouse`, // Subject line
             text: `Please come to warehouse`, // plain text body
@@ -2051,7 +2051,7 @@ async function receivedAtWarehouse(req, res) {
             sendNotification(to, notification);
             transporter.sendMail(
               {
-                from: process.env.EMAIL_USERNAME, // sender address
+                from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
                 to: ["sigidevelopers@gmail.com", bookingData.senderEmail], // list of receivers
                 subject: `Please schedule the booking(c) # ${bookingData.trackingId}`, // Subject line
                 text: `Open the app and schedule the booking`, // plain text body
@@ -2078,7 +2078,7 @@ async function receivedAtWarehouse(req, res) {
             console.log("------------- URL FOR SCHEDULING DROP OFF", urlDyn);
             transporter.sendMail(
               {
-                from: process.env.EMAIL_USERNAME, // sender address
+                from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
                 to: ["sigidevelopers@gmail.com", bookingData.senderEmail], // list of receivers
                 subject: `Link for scheduling dropoff(s) # ${bookingData.trackingId}`, // Subject line
                 text: `Please click on the link ${urlDyn}`, // plain text body
@@ -2105,7 +2105,7 @@ async function receivedAtWarehouse(req, res) {
           console.log("------------- URL FOR SCHEDULING DROP OFF", urlDyn);
           transporter.sendMail(
             {
-              from: process.env.EMAIL_USERNAME, // sender address
+              from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
               to: ["sigidevelopers@gmail.com", bookingData.receiverEmail], // list of receivers
               subject: `Link for scheduling dropoff(r) # ${bookingData.trackingId}`, // Subject line
               text: `Please click on the link ${urlDyn}`, // plain text body
@@ -4632,7 +4632,7 @@ async function confirmPayment(req, res) {
   });
   transporter.sendMail(
     {
-      from: process.env.EMAIL_USERNAME, // sender address
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
       to: ["sigidevelopers@gmail.com", bookingData.senderEmail], // list of receivers
       subject: `Order ${bookingData.trackingId}: Order Placed`, // Subject line
       //text: `Your OTP is ${OTP}`, // plain text body

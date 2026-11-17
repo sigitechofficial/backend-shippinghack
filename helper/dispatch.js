@@ -17,7 +17,7 @@ module.exports = function (email,name,orderNumber,createdAt,packageCount,company
 
   transporter.sendMail(
     {
-      from: process.env.EMAIL_USERNAME, // sender address
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
       to: email, // list of receivers
       subject: `Your order #${orderNumber} dispatched from usa warehouse towards delivery address`, // Subject line
       attachments: a.dispatch,

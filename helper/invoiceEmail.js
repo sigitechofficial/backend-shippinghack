@@ -10,7 +10,7 @@ module.exports = function (email,name,orderNumber,servicetype,company,origin,des
 
   transporter.sendMail(
     {
-      from: process.env.EMAIL_USERNAME, // sender address
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
       to: email, // list of receivers
       subject: `PACIFRICA EXPRESS INVOICE MAIL`, // Subject line
       // text: `Your OTP for Pacifrica Express is ${otp}`, // plain text body

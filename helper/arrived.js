@@ -13,7 +13,7 @@ module.exports = function (email,username,orderNumber,packageQty,billableweight,
   const supportNumber = '017874854624';
   transporter.sendMail(
     {
-      from: process.env.EMAIL_USERNAME, // sender address
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
       to: email, // list of receivers
       subject: `Your order #${orderNumber} has been arrived at Puerto Rico Warehouse`, // Subject line
       // text: `Your OTP for Pacifrica Express is ${otp}`, // plain text body

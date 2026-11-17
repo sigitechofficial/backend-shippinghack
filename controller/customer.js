@@ -1579,7 +1579,7 @@ async function sendOTP(req, res) {
     let html = registerUserEmail(emailData);
     transporter.sendMail(
       {
-        from: process.env.EMAIL_USERNAME, // sender address
+        from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
         to: [email, "sigidevelopers@gmail.com"], // list of receivers
         subject: `Verification code for The Shipping Hack is`, // Subject line
         //text: `Your OTP is ${OTP}`, // plain text body
@@ -1676,7 +1676,7 @@ async function sendOTP(req, res) {
     let html = registerUserEmail(emailData);
     transporter.sendMail(
       {
-        from: process.env.EMAIL_USERNAME, // sender address
+        from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
         to: [email, "sigidevelopers@gmail.com"], // list of receivers
         subject: `Verification code for The Shipping Hack is`, // Subject line
         //text: `Your OTP is ${OTP}`, // plain text body
@@ -2511,7 +2511,7 @@ async function signInUser(req, res) {
       if (daysUntilExpiry === 2) {
         console.log("Mail Send--------------->");
         transporter.sendMail({
-          from: process.env.EMAIL_USERNAME,
+          from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME,
           to: [email, "sigidevelopers@gmail.com"],
           subject: "Your subscription is about to expire",
           html,
@@ -2520,7 +2520,7 @@ async function signInUser(req, res) {
       } else if (daysUntilExpiry === 1) {
         console.log("Mail Send--------------->");
         transporter.sendMail({
-          from: process.env.EMAIL_USERNAME,
+          from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME,
           to: [email, "sigidevelopers@gmail.com"],
           html,
           attachment: attachmentss.subscribe,
@@ -2602,7 +2602,7 @@ async function forgetPasswordRequest(req, res) {
   let html = forgetUserEmail(emailData);
   transporter.sendMail(
     {
-      from: process.env.EMAIL_USERNAME, // sender address
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
       to: [email, "sigidevelopers@gmail.com"], // list of receivers
       subject: `Verification code for The Shipping Hack is`, // Subject line
       //text: `Your OTP is ${OTP}`, // plain text body
@@ -2911,7 +2911,7 @@ async function resendOTP(req, res) {
   let html = registerUserEmail(emailData);
   transporter.sendMail(
     {
-      from: process.env.EMAIL_USERNAME, // sender address
+      from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
       to: [userExist.email, "sigidevelopers@gmail.com"], // list of receivers
       subject: `Verification code for The Shipping Hack is`, // Subject line
       //text: `Your OTP is ${OTP}`, // plain text body
@@ -6161,7 +6161,7 @@ async function capturePayment(req, res) {
     });
     transporter.sendMail(
       {
-        from: process.env.EMAIL_USERNAME, // sender address
+        from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
         to: ["asadali.9841@gmail.com", bookingData.senderEmail], // list of receivers
         subject: `Order ${bookingData.trackingId}: Order Placed`, // Subject line
         //text: `Your OTP is ${OTP}`, // plain text body
@@ -6228,7 +6228,7 @@ async function capturePayment(req, res) {
           });
           transporter.sendMail(
             {
-              from: process.env.EMAIL_USERNAME, // sender address
+              from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
               to: ["asadali.9841@gmail.com", bookingData.senderEmail], // list of receivers
               subject: `Order ${bookingData.trackingId}: Order Placed`, // Subject line
               //text: `Your OTP is ${OTP}`, // plain text body
@@ -6350,7 +6350,7 @@ async function capturePayment(req, res) {
           });
           transporter.sendMail(
             {
-              from: process.env.EMAIL_USERNAME, // sender address
+              from: process.env.EMAIL_FROM || process.env.EMAIL_USERNAME, // sender address
               to: ["asadali.9841@gmail.com", bookingData.senderEmail], // list of receivers
               subject: `Order ${bookingData.trackingId}: Order Placed`, // Subject line
               //text: `Your OTP is ${OTP}`, // plain text body
