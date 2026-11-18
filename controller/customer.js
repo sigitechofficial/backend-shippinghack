@@ -103,6 +103,7 @@ const fedex = require("./fedex");
 const nodemailer = require("nodemailer");
 const { attachments } = require("../helper/attachment");
 const attachmentss = attachments();
+const orderPlacedMail = require("../helper/orderPlaced");
 const sequelize = require("sequelize");
 // Barcode generator
 var JsBarcode = require("jsbarcode");
@@ -3341,6 +3342,16 @@ async function createOrderIntUnlocked(req, res) {
     data.ecommerceCompanyId = data.ecommerceCompanyId || ecommerceCompanyId;
   });
   await package.bulkCreate(packages);
+
+  // Order confirmation email (the app's success dialog promises one)
+  orderPlacedMail(
+    userData.email,
+    userData.firstName,
+    trackingId,
+    `${packages.length}`,
+    consolidate == true ? "yes" : "no",
+    String(bookingData.createdAt).substring(4, 15)
+  );
 
   // TODO Later
   // Creating billing details
